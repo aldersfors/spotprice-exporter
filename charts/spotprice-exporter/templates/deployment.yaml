@@ -1,0 +1,111 @@
+{{- if not .Values.zones }}
+{{- fail "zones is required: set zones to one or more EIC bidding zone codes, comma separated" }}
+{{- end }}
+{{- if not .Values.entsoe.existingSecret }}
+{{- fail "entsoe.existingSecret is required: name of a secret that holds the ENTSO-E token" }}
+{{- end }}
+{{- if not .Values.otlp.endpoint }}
+{{- fail "otlp.endpoint is required: base URL of the OpenTelemetry collector" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "spotprice-exporter.fullname" . }}
+  labels:
+    {{- include "spotprice-exporter.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # Recreate, not RollingUpdate: two pods at once would push duplicate series.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "spotprice-exporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+      labels:
+        {{- include "spotprice-exporter.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "spotprice-exporter.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: spotprice-exporter
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: SPOTPRICE_ZONES
+              value: {{ .Values.zones | quote }}
+            - name: SPOTPRICE_ENTSOE_TOKEN_FILE
+              value: {{ printf "%s/%s" .Values.entsoe.mountPath .Values.entsoe.key | quote }}
+            {{- if .Values.entsoe.baseUrl }}
+            - name: SPOTPRICE_ENTSOE_BASE_URL
+              value: {{ .Values.entsoe.baseUrl | quote }}
+            {{- end }}
+            - name: SPOTPRICE_LISTEN
+              value: "0.0.0.0:8080"
+            - name: SPOTPRICE_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: SPOTPRICE_LOG_JSON
+              value: {{ .Values.logJson | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otlp.endpoint | quote }}
+            {{- with .Values.otlp.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: entsoe-token
+              mountPath: {{ .Values.entsoe.mountPath }}
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: entsoe-token
+          secret:
+            secretName: {{ .Values.entsoe.existingSecret }}
+            items:
+              - key: {{ .Values.entsoe.key }}
+                path: {{ .Values.entsoe.key }}
+            defaultMode: 0440
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

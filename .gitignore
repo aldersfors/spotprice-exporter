@@ -1,0 +1,26 @@
+# Rust (Cargo.lock is committed: this is a binary)
+/target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment and secrets (the ENTSO-E token never lives in the repo)
+.env
+.env.local
+.env.*.local
+*.token
+
+# Coverage
+*.profdata
+*.profraw
+coverage/
+
+# Helm
+*.tgz

@@ -1,0 +1,56 @@
+# Example alert rules for spotprice-exporter, as a PrometheusRule (prometheus-operator).
+# Metric names are the Prometheus-style names a backend typically derives from the OTLP names in
+# docs/metric-contract.md. Verify them against your backend before enabling.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: spotprice-exporter
+spec:
+  groups:
+    - name: spotprice-exporter
+      rules:
+        - alert: SpotPriceDataStale
+          # Prices are older than two hours. Consumers see the last good prices, not gaps.
+          expr: max by (energy_market_bidding_zone) (energy_market_data_age) > 7200
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Spot prices for {{ $labels.energy_market_bidding_zone }} are stale"
+            runbook: "docs/runbook.md#stale-data-energymarketdataage-is-growing"
+
+        - alert: SpotPriceCoverageRunningOut
+          # Cached coverage ends within an hour. Usually the next-day fetch has failed.
+          expr: min by (energy_market_bidding_zone) (energy_market_data_horizon) < 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Spot price coverage for {{ $labels.energy_market_bidding_zone }} ends within an hour"
+            runbook: "docs/runbook.md#coverage-running-out-energymarketdatahorizon-near-zero-or-negative"
+
+        - alert: SpotPriceAuthRejected
+          # The token is rejected. Retries are hourly, so this persists until the token is fixed.
+          expr: |
+            sum by (energy_market_bidding_zone) (
+              increase(energy_market_fetch_attempts_total{energy_market_fetch_result="unauthorized"}[1h])
+            ) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "ENTSO-E rejected the token for {{ $labels.energy_market_bidding_zone }}"
+            runbook: "docs/runbook.md#no-price-data-at-all-ready-returns-503"
+
+        - alert: SpotPriceFetchFailing
+          # Sustained transient or rate-limit failures for over an hour.
+          expr: |
+            sum by (energy_market_bidding_zone) (
+              increase(energy_market_fetch_attempts_total{energy_market_fetch_result=~"transient|rate_limited|malformed"}[1h])
+            ) > 3
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Price fetches for {{ $labels.energy_market_bidding_zone }} are failing repeatedly"
+            runbook: "docs/runbook.md#no-price-data-at-all-ready-returns-503"

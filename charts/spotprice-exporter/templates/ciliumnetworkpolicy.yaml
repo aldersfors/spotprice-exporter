@@ -1,0 +1,48 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+{{- if not .Values.ciliumNetworkPolicy.otlpNamespace }}
+{{- fail "ciliumNetworkPolicy is enabled but ciliumNetworkPolicy.otlpNamespace is empty: the exporter cannot push metrics without it" }}
+{{- end }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "spotprice-exporter.fullname" . }}
+  labels:
+    {{- include "spotprice-exporter.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "spotprice-exporter.selectorLabels" . | nindent 6 }}
+  egress:
+    # DNS via kube-dns, so FQDN rules can learn IPs
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Values.networkPolicy.dnsNamespace | quote }}
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+    # ENTSO-E API over HTTPS
+    - toFQDNs:
+        - matchName: {{ .Values.ciliumNetworkPolicy.entsoeFQDN | quote }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # OTLP collector: namespace plus optional pod labels
+    {{- if .Values.ciliumNetworkPolicy.otlpNamespace }}
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Values.ciliumNetworkPolicy.otlpNamespace | quote }}
+            {{- with .Values.ciliumNetworkPolicy.otlpPodLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      toPorts:
+        - ports:
+            - port: "4318"
+              protocol: TCP
+    {{- end }}
+{{- end }}

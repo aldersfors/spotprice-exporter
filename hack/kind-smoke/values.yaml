@@ -1,0 +1,8 @@
+# Values for the kind smoke test. The NetworkPolicy must allow egress to the collector, otherwise
+# the exporter cannot push metrics. This file is applied on top of the chart defaults.
+networkPolicy:
+  enabled: true
+  otlpNamespaceSelector:
+    kubernetes.io/metadata.name: observability
+  otlpPodSelector:
+    app: otel-collector

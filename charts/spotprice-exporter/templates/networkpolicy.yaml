@@ -1,0 +1,54 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- if not (or .Values.networkPolicy.otlpNamespaceSelector .Values.networkPolicy.otlpPodSelector .Values.networkPolicy.otlpCidrs) }}
+{{- fail "networkPolicy is enabled but no OTLP destination is set: set networkPolicy.otlpNamespaceSelector/otlpPodSelector or networkPolicy.otlpCidrs, or disable networkPolicy. Without it the exporter cannot push metrics." }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "spotprice-exporter.fullname" . }}
+  labels:
+    {{- include "spotprice-exporter.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "spotprice-exporter.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dnsNamespace | quote }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- if .Values.networkPolicy.entsoeCidrs }}
+    # ENTSO-E API over HTTPS
+    - to:
+        {{- range .Values.networkPolicy.entsoeCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
+    # OTLP collector, in-cluster selectors or CIDRs
+    {{- if or .Values.networkPolicy.otlpNamespaceSelector .Values.networkPolicy.otlpPodSelector }}
+    - to:
+        - namespaceSelector:
+            matchLabels: {{- toYaml .Values.networkPolicy.otlpNamespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels: {{- toYaml .Values.networkPolicy.otlpPodSelector | nindent 14 }}
+    {{- end }}
+    {{- if .Values.networkPolicy.otlpCidrs }}
+    - to:
+        {{- range .Values.networkPolicy.otlpCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+    {{- end }}
+{{- end }}

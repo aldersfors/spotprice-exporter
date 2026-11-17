@@ -1,0 +1,29 @@
+{
+  // Renovate config in JSON5. Renovate reads renovate.json / renovate.json5 only,
+  // NOT renovate.jsonc.
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    // Dependency Dashboard, grouping, semantic commits, merge-confidence badges.
+    "config:recommended",
+    // Automerge minor and patch updates (majors stay manual PRs).
+    ":automergeMinor",
+    // Automerge digest / SHA pin updates.
+    ":automergeDigest",
+  ],
+
+  // Set to false if the repo is private on a plan without GitHub native auto-merge
+  // (same setting as k8s-home-lab). Revisit when repo visibility is decided (S0.4).
+  platformAutomerge: false,
+
+  // config:recommended ignores **/vendor/** and **/test/**; re-declare the defaults
+  // without the vendor entry so vendored charts are not skipped by accident.
+  ignorePaths: [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**",
+  ],
+}

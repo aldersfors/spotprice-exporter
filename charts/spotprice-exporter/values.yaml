@@ -1,0 +1,89 @@
+# Image is pinned here and bumped by Renovate (helm-values manager).
+image:
+  repository: ghcr.io/jalet/spotprice-exporter
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Exactly one replica. Each replica pushes the same series, so more than one would duplicate points.
+replicaCount: 1
+
+# Bidding zones as EIC codes, comma separated. Example: SE3 is 10Y1001A1001A46L.
+zones: ""
+
+# ENTSO-E token, read from a file mounted from an existing Kubernetes secret. The token never
+# goes in values. Create the secret out of band (or via ExternalSecret).
+entsoe:
+  # Override the API base URL. Only for tests against a mock server. Empty means production.
+  baseUrl: ""
+  existingSecret: ""
+  key: token
+  # Mount path for the token file. Read via SPOTPRICE_ENTSOE_TOKEN_FILE.
+  mountPath: /var/run/secrets/entsoe
+
+# Standard OpenTelemetry OTLP settings, read by the SDK from the environment.
+otlp:
+  # Collector base URL, for example http://otel-collector.observability:4318
+  endpoint: ""
+  # Extra environment variables for the exporter, for example OTEL_EXPORTER_OTLP_HEADERS.
+  extraEnv: []
+
+logLevel: info
+logJson: true
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+# 65532 is the distroless nonroot user and group. fsGroup lets that group read the mounted token.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Egress only to the ENTSO-E API and the OTLP collector. No ingress: probes come from the kubelet.
+# Plain NetworkPolicy: DNS plus OTLP. ENTSO-E has no stable IPs, so use the Cilium policy below
+# (toFQDNs) for the API, or set entsoeCidrs yourself.
+networkPolicy:
+  enabled: true
+  entsoeCidrs: []
+  # OTLP collector: in-cluster selectors, or CIDRs for a collector outside the cluster.
+  otlpNamespaceSelector: {}
+  otlpPodSelector: {}
+  otlpCidrs: []
+  dnsNamespace: kube-system
+
+# CiliumNetworkPolicy: egress to the ENTSO-E hostname and to the OTLP collector.
+ciliumNetworkPolicy:
+  enabled: false
+  entsoeFQDN: web-api.tp.entsoe.eu
+  # Collector namespace and optional pod labels. Empty namespace means no OTLP egress rule.
+  otlpNamespace: ""
+  otlpPodLabels: {}
