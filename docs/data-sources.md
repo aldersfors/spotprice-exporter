@@ -46,8 +46,3 @@ source found. Other sources disagree, and the terms page itself could not be fet
 
 Day-ahead results clear once a day, on a fixed schedule (around 12:45 CET). What is not yet known is
 when the data appears on the API. The S0.2 poll measures that.
-
-
-- Day-ahead market clears around 12:45 CET. Next-day prices become available from about 13:00 (other
-  sources; ENTSO-E latency not verified).
-- Polling after the publication window with backoff. Measured values go here once S0.2 runs.
