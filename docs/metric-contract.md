@@ -17,6 +17,10 @@ Observable gauges. Values are read from the cache when the SDK exports, not when
 | `energy.market.price.next` | `EUR/MWh` | Price for the interval after the one containing now. Absent at the end of cached coverage. |
 | `energy.market.data.age` | `s` | Seconds since the last successful fetch for the zone. Absent until the first success. |
 | `energy.market.data.horizon` | `s` | Seconds from now until cached coverage ends. Negative when the cache has run out. |
+| `energy.market.price.day.min` | `EUR/MWh` | Lowest price in the zone's local calendar day. Absent until the cache covers the whole day. |
+| `energy.market.price.day.max` | `EUR/MWh` | Highest price in the zone's local calendar day. Same rule as `day.min`. |
+| `energy.market.price.day.avg` | `EUR/MWh` | Mean price in the zone's local calendar day, equal weight per interval. Same rule as `day.min`. |
+| `energy.market.price.cheapest_window.start` | `s` | Unix time of the start of the cheapest run of intervals from now on. The run length is set by `SPOTPRICE_CHEAPEST_WINDOW_HOURS` (default 3) and is carried in the `energy.market.window` attribute. Runs never span a gap in the source data. |
 
 ## Counter
 
@@ -31,7 +35,8 @@ Observable gauges. Values are read from the cache when the SDK exports, not when
 | `energy.market.bidding_zone` | EIC bidding zone code, for example `10Y1001A1001A46L` (SE3) | all |
 | `energy.market.type` | `day_ahead` | all |
 | `energy.market.source` | `entsoe` | all |
-| `energy.market.resolution` | `PT15M`, `PT60M` | `energy.market.price`, `energy.market.price.next` |
+| `energy.market.resolution` | `PT15M`, `PT60M` | `energy.market.price`, `energy.market.price.next`, `energy.market.price.day.*`, `energy.market.price.cheapest_window.start` |
+| `energy.market.window` | ISO 8601 duration, for example `PT3H` | `energy.market.price.cheapest_window.start` |
 | `energy.market.fetch.result` | `success`, `no_data`, `unauthorized`, `rate_limited`, `transient`, `malformed` | `energy.market.fetch.attempts` |
 
 Timestamps never go in attributes. The zone attribute is the only high-cardinality dimension, and

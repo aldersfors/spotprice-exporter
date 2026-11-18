@@ -24,7 +24,7 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | S1.5 Scheduler | Done | Pure policy tested. Hourly full refresh per zone, so gaps the source fills later reach the cache (max 24 requests per zone per day, plus fetches while coverage is short). Publish window 11:00 UTC; <=1 request per zone per 15 min |
 | S1.6 Gauges over OTLP | Done, E2E verified | price, .next, data.age, data.horizon arrive at a collector with zone/type/source/resolution attributes; values match mock. Found and fixed: meter taken from global provider before it was set (no-op) |
 | S2.1 Staleness and horizon | Done | data.age and data.horizon exported |
-| S2.2 Derived metrics | Blocked on tzdb | Local-day statistics need named timezones. jiff needs its timezone database feature for that, a dependency decision |
+| S2.2 Derived metrics | Done | Local-day min, max and avg (zone timezone, DST-aware, only when the cache covers the whole day) and cheapest contiguous window (`SPOTPRICE_CHEAPEST_WINDOW_HOURS`, default 3). Timezone database bundled with jiff (tzdb-bundle-always) so the distroless image needs no system zoneinfo. Verified end to end on live SE3 data |
 | S2.3 Health and readiness | Done | /healthz liveness; /ready after first successful fetch |
 | S2.4 Logs and self-telemetry | Done | JSON logs; `energy.market.fetch.attempts` counter by zone and outcome |
 | S2.5 Graceful shutdown with flush | Done, verified | SIGTERM: HTTP stops, scheduler aborts, last metrics flushed to collector | SIGTERM/ctrl-c stops HTTP, aborts scheduler, flushes meter provider |
