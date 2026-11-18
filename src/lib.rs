@@ -1,6 +1,7 @@
 //! Core library for spotprice-exporter: day-ahead electricity prices as OpenTelemetry metrics.
 
 pub mod config;
+pub mod derived;
 pub mod health;
 pub mod metrics;
 pub mod model;
