@@ -87,3 +87,5 @@ ciliumNetworkPolicy:
   # Collector namespace and optional pod labels. Empty namespace means no OTLP egress rule.
   otlpNamespace: ""
   otlpPodLabels: {}
+  # Collector port. 4318 is the OTLP/HTTP default; Mimir serves OTLP on 8080.
+  otlpPort: "4318"

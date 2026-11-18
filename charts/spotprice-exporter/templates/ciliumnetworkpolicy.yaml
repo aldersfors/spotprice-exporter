@@ -42,7 +42,7 @@ spec:
             {{- end }}
       toPorts:
         - ports:
-            - port: "4318"
+            - port: {{ .Values.ciliumNetworkPolicy.otlpPort | quote }}
               protocol: TCP
     {{- end }}
 {{- end }}
