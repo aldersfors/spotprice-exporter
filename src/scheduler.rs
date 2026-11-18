@@ -31,6 +31,10 @@ use crate::{
 /// Slack allowed between cached coverage and the UTC target. See `should_fetch`.
 pub const COVERAGE_TOLERANCE: SignedDuration = SignedDuration::from_hours(2);
 
+/// How often each zone is re-fetched even when coverage looks complete. This picks up gaps that
+/// the source fills later in the day. Costs 24 requests per zone per day at most.
+pub const FULL_REFRESH_INTERVAL: SignedDuration = SignedDuration::from_hours(1);
+
 /// Wait before re-checking after a success or a no-data response.
 pub const REFRESH_INTERVAL: SignedDuration = SignedDuration::from_mins(15);
 /// Backoff cap after repeated transient failures.
@@ -85,6 +89,7 @@ pub fn should_fetch(
     covered_until: Option<Timestamp>,
     target: Timestamp,
     next_attempt: Option<Timestamp>,
+    refresh_due: bool,
     now: Timestamp,
 ) -> bool {
     // ENTSO-E documents run local midnight to local midnight. For Nordic zones that is 22:00 or
@@ -93,7 +98,7 @@ pub fn should_fetch(
     // timezones once the zone registry exists (backlog S1.3).
     let needs_data = covered_until.is_none_or(|covered| covered < target - COVERAGE_TOLERANCE);
     let attempt_due = next_attempt.is_none_or(|at| now >= at);
-    needs_data && attempt_due
+    (needs_data || refresh_due) && attempt_due
 }
 
 /// Backoff after `failures` consecutive transient failures (1-based).
@@ -107,6 +112,7 @@ pub fn backoff_after(failures: u32) -> SignedDuration {
 #[derive(Debug, Default, Clone, Copy)]
 struct ZoneSchedule {
     next_attempt: Option<Timestamp>,
+    next_refresh: Option<Timestamp>,
     failures: u32,
 }
 
@@ -141,7 +147,8 @@ pub async fn run<P: PriceProvider>(
         for zone in zones {
             let covered = read(&state).covered_until(&zone);
             let schedule = schedules.entry(zone.clone()).or_default();
-            if !should_fetch(covered, target, schedule.next_attempt, now) {
+            let refresh_due = schedule.next_refresh.is_none_or(|at| now >= at);
+            if !should_fetch(covered, target, schedule.next_attempt, refresh_due, now) {
                 continue;
             }
 
@@ -154,6 +161,7 @@ pub async fn run<P: PriceProvider>(
                     write(&state).record_success(Timestamp::now(), series);
                     schedule.failures = 0;
                     schedule.next_attempt = Some(Timestamp::now() + REFRESH_INTERVAL);
+                    schedule.next_refresh = Some(Timestamp::now() + FULL_REFRESH_INTERVAL);
                     info!(zone = %zone, points, "prices fetched");
                 }
                 Err(err) if err.is_fatal() => {
@@ -228,7 +236,15 @@ mod tests {
     #[test]
     fn fetches_when_nothing_cached_and_no_attempt_pending() {
         let target = ts(2026, 11, 18, 0, 0);
-        assert!(should_fetch(None, target, None, at(9, 0)));
+        assert!(should_fetch(None, target, None, false, at(9, 0)));
+    }
+
+    #[test]
+    fn complete_coverage_still_refreshes_when_due() {
+        let target = ts(2026, 11, 19, 0, 0);
+        let covered = ts(2026, 11, 18, 23, 0);
+        assert!(!should_fetch(Some(covered), target, None, false, at(9, 0)));
+        assert!(should_fetch(Some(covered), target, None, true, at(9, 0)));
     }
 
     #[test]
@@ -236,13 +252,13 @@ mod tests {
         // Swedish local day ends at 23:00 UTC; the UTC midnight target is one hour later.
         let target = ts(2026, 11, 19, 0, 0);
         let covered = ts(2026, 11, 18, 23, 0);
-        assert!(!should_fetch(Some(covered), target, None, at(9, 0)));
+        assert!(!should_fetch(Some(covered), target, None, false, at(9, 0)));
     }
 
     #[test]
     fn skips_when_coverage_reaches_target() {
         let target = ts(2026, 11, 18, 0, 0);
-        assert!(!should_fetch(Some(target), target, None, at(9, 0)));
+        assert!(!should_fetch(Some(target), target, None, false, at(9, 0)));
     }
 
     #[test]
@@ -252,12 +268,14 @@ mod tests {
             None,
             target,
             Some(at(10, 0)),
+            false,
             at(9, 59)
         ));
         assert!(should_fetch(
             None,
             target,
             Some(at(10, 0)),
+            false,
             at(10, 0)
         ));
     }
