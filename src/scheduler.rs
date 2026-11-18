@@ -19,7 +19,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, NaiveTime, TimeDelta, Utc};
+use jiff::{SignedDuration, Span, Timestamp, civil, tz::TimeZone};
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -28,14 +28,17 @@ use crate::{
     state::MarketState,
 };
 
+/// Slack allowed between cached coverage and the UTC target. See `should_fetch`.
+pub const COVERAGE_TOLERANCE: SignedDuration = SignedDuration::from_hours(2);
+
 /// Wait before re-checking after a success or a no-data response.
-pub const REFRESH_INTERVAL: TimeDelta = TimeDelta::minutes(15);
+pub const REFRESH_INTERVAL: SignedDuration = SignedDuration::from_mins(15);
 /// Backoff cap after repeated transient failures.
-pub const MAX_BACKOFF: TimeDelta = TimeDelta::minutes(60);
+pub const MAX_BACKOFF: SignedDuration = SignedDuration::from_mins(60);
 /// Backoff base after the first transient failure.
-pub const BASE_BACKOFF: TimeDelta = TimeDelta::minutes(1);
+pub const BASE_BACKOFF: SignedDuration = SignedDuration::from_mins(1);
 /// Wait after an authentication failure before trying again.
-pub const UNAUTHORIZED_RETRY: TimeDelta = TimeDelta::minutes(60);
+pub const UNAUTHORIZED_RETRY: SignedDuration = SignedDuration::from_mins(60);
 
 /// Scheduler settings.
 #[derive(Debug, Clone, Copy)]
@@ -43,7 +46,7 @@ pub struct SchedulerConfig {
     /// How often the scheduler wakes to check zones.
     pub tick: Duration,
     /// UTC time after which next-day prices are expected.
-    pub publish_after: NaiveTime,
+    pub publish_after: civil::Time,
 }
 
 impl Default for SchedulerConfig {
@@ -51,36 +54,51 @@ impl Default for SchedulerConfig {
         Self {
             tick: Duration::from_secs(60),
             // 11:00 UTC is before the 12:45 CET clearing time, so it is safe as an early attempt.
-            publish_after: NaiveTime::from_hms_opt(11, 0, 0).unwrap_or(NaiveTime::MIN),
+            publish_after: civil::time(11, 0, 0, 0),
         }
     }
 }
 
 /// End of the coverage the scheduler should have for `now`.
 #[must_use]
-pub fn coverage_target(now: DateTime<Utc>, publish_after: NaiveTime) -> DateTime<Utc> {
-    let today = now.date_naive();
-    let days_ahead = if now.time() < publish_after { 1 } else { 2 };
-    let target_day = today + TimeDelta::days(days_ahead);
-    target_day.and_time(NaiveTime::MIN).and_utc()
+pub fn coverage_target(now: Timestamp, publish_after: civil::Time) -> Timestamp {
+    let utc_now = now.to_zoned_datetime(TimeZone::UTC);
+    let days_ahead = if utc_now.time() < publish_after { 1 } else { 2 };
+    let target_day = utc_now
+        .date()
+        .checked_add(Span::new().days(days_ahead))
+        .unwrap_or_else(|_| utc_now.date());
+    utc_midnight(target_day)
+}
+
+/// Start of a UTC calendar day as an instant. Dates out of range fall back to the input day's
+/// start, which cannot happen for any date this exporter will see.
+fn utc_midnight(date: civil::Date) -> Timestamp {
+    date.at(0, 0, 0, 0)
+        .to_zoned_datetime(TimeZone::UTC)
+        .map_or(Timestamp::UNIX_EPOCH, |zoned| zoned.timestamp())
 }
 
 /// Whether a fetch should be attempted now for one zone.
 #[must_use]
 pub fn should_fetch(
-    covered_until: Option<DateTime<Utc>>,
-    target: DateTime<Utc>,
-    next_attempt: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
+    covered_until: Option<Timestamp>,
+    target: Timestamp,
+    next_attempt: Option<Timestamp>,
+    now: Timestamp,
 ) -> bool {
-    let needs_data = covered_until.is_none_or(|covered| covered < target);
+    // ENTSO-E documents run local midnight to local midnight. For Nordic zones that is 22:00 or
+    // 23:00 UTC, one to two hours before a UTC midnight target. Without the tolerance the
+    // scheduler would re-fetch every 15 minutes for the rest of the day. Replace with real zone
+    // timezones once the zone registry exists (backlog S1.3).
+    let needs_data = covered_until.is_none_or(|covered| covered < target - COVERAGE_TOLERANCE);
     let attempt_due = next_attempt.is_none_or(|at| now >= at);
     needs_data && attempt_due
 }
 
 /// Backoff after `failures` consecutive transient failures (1-based).
 #[must_use]
-pub fn backoff_after(failures: u32) -> TimeDelta {
+pub fn backoff_after(failures: u32) -> SignedDuration {
     let exponent = failures.saturating_sub(1).min(16);
     let factor = i64::from(2_u32.pow(exponent));
     (BASE_BACKOFF * i32::try_from(factor).unwrap_or(i32::MAX)).min(MAX_BACKOFF)
@@ -88,7 +106,7 @@ pub fn backoff_after(failures: u32) -> TimeDelta {
 
 #[derive(Debug, Default, Clone, Copy)]
 struct ZoneSchedule {
-    next_attempt: Option<DateTime<Utc>>,
+    next_attempt: Option<Timestamp>,
     failures: u32,
 }
 
@@ -116,7 +134,7 @@ pub async fn run<P: PriceProvider>(
     let mut ticker = tokio::time::interval(config.tick);
     loop {
         ticker.tick().await;
-        let now = Utc::now();
+        let now = Timestamp::now();
         let target = coverage_target(now, config.publish_after);
         let zones: Vec<String> = read(&state).zone_codes().map(str::to_owned).collect();
 
@@ -127,34 +145,34 @@ pub async fn run<P: PriceProvider>(
                 continue;
             }
 
-            let from = now.date_naive().and_time(NaiveTime::MIN).and_utc();
+            let from = utc_midnight(now.to_zoned_datetime(TimeZone::UTC).date());
             let result = provider.fetch(&zone, from, target).await;
             fetches.record(&zone, outcome_label(&result.as_ref().map(|_| ())));
             match result {
                 Ok(series) => {
                     let points = series.points().len();
-                    write(&state).record_success(Utc::now(), series);
+                    write(&state).record_success(Timestamp::now(), series);
                     schedule.failures = 0;
-                    schedule.next_attempt = Some(Utc::now() + REFRESH_INTERVAL);
+                    schedule.next_attempt = Some(Timestamp::now() + REFRESH_INTERVAL);
                     info!(zone = %zone, points, "prices fetched");
                 }
                 Err(err) if err.is_fatal() => {
-                    schedule.next_attempt = Some(Utc::now() + UNAUTHORIZED_RETRY);
+                    schedule.next_attempt = Some(Timestamp::now() + UNAUTHORIZED_RETRY);
                     error!(zone = %zone, error = %err, "price fetch rejected, retrying in 60 minutes");
                 }
                 Err(ProviderError::NoData) => {
-                    schedule.next_attempt = Some(Utc::now() + REFRESH_INTERVAL);
+                    schedule.next_attempt = Some(Timestamp::now() + REFRESH_INTERVAL);
                     debug!(zone = %zone, "no prices published yet for the window");
                 }
                 Err(err) => {
                     schedule.failures = schedule.failures.saturating_add(1);
                     let wait = backoff_after(schedule.failures);
-                    schedule.next_attempt = Some(Utc::now() + wait);
+                    schedule.next_attempt = Some(Timestamp::now() + wait);
                     warn!(
                         zone = %zone,
                         error = %err,
                         failures = schedule.failures,
-                        retry_in_seconds = wait.num_seconds(),
+                        retry_in_seconds = wait.as_secs(),
                         "price fetch failed"
                     );
                 }
@@ -173,27 +191,29 @@ fn write(state: &RwLock<MarketState>) -> std::sync::RwLockWriteGuard<'_, MarketS
 
 #[cfg(test)]
 mod tests {
-    use chrono::TimeZone;
-
     use super::*;
 
-    fn at(h: u32, m: u32) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 11, 17, h, m, 0)
-            .single()
+    fn ts(y: i32, mo: i32, d: i32, h: i32, mi: i32) -> Timestamp {
+        civil::date(y as i16, mo as i8, d as i8)
+            .at(h as i8, mi as i8, 0, 0)
+            .to_zoned_datetime(TimeZone::UTC)
             .expect("valid")
+            .timestamp()
     }
 
-    fn publish_after() -> NaiveTime {
-        NaiveTime::from_hms_opt(11, 0, 0).expect("valid")
+    fn at(h: i32, m: i32) -> Timestamp {
+        ts(2026, 11, 17, h, m)
+    }
+
+    fn publish_after() -> civil::Time {
+        civil::time(11, 0, 0, 0)
     }
 
     #[test]
     fn target_before_publication_is_end_of_today() {
         assert_eq!(
             coverage_target(at(9, 0), publish_after()),
-            Utc.with_ymd_and_hms(2026, 11, 18, 0, 0, 0)
-                .single()
-                .expect("valid")
+            ts(2026, 11, 18, 0, 0)
         );
     }
 
@@ -201,38 +221,45 @@ mod tests {
     fn target_after_publication_is_end_of_tomorrow() {
         assert_eq!(
             coverage_target(at(12, 30), publish_after()),
-            Utc.with_ymd_and_hms(2026, 11, 19, 0, 0, 0)
-                .single()
-                .expect("valid")
+            ts(2026, 11, 19, 0, 0)
         );
     }
 
     #[test]
     fn fetches_when_nothing_cached_and_no_attempt_pending() {
-        let target = Utc
-            .with_ymd_and_hms(2026, 11, 18, 0, 0, 0)
-            .single()
-            .expect("valid");
+        let target = ts(2026, 11, 18, 0, 0);
         assert!(should_fetch(None, target, None, at(9, 0)));
     }
 
     #[test]
+    fn local_midnight_coverage_counts_as_complete() {
+        // Swedish local day ends at 23:00 UTC; the UTC midnight target is one hour later.
+        let target = ts(2026, 11, 19, 0, 0);
+        let covered = ts(2026, 11, 18, 23, 0);
+        assert!(!should_fetch(Some(covered), target, None, at(9, 0)));
+    }
+
+    #[test]
     fn skips_when_coverage_reaches_target() {
-        let target = Utc
-            .with_ymd_and_hms(2026, 11, 18, 0, 0, 0)
-            .single()
-            .expect("valid");
+        let target = ts(2026, 11, 18, 0, 0);
         assert!(!should_fetch(Some(target), target, None, at(9, 0)));
     }
 
     #[test]
     fn honours_pending_backoff() {
-        let target = Utc
-            .with_ymd_and_hms(2026, 11, 18, 0, 0, 0)
-            .single()
-            .expect("valid");
-        assert!(!should_fetch(None, target, Some(at(10, 0)), at(9, 59)));
-        assert!(should_fetch(None, target, Some(at(10, 0)), at(10, 0)));
+        let target = ts(2026, 11, 18, 0, 0);
+        assert!(!should_fetch(
+            None,
+            target,
+            Some(at(10, 0)),
+            at(9, 59)
+        ));
+        assert!(should_fetch(
+            None,
+            target,
+            Some(at(10, 0)),
+            at(10, 0)
+        ));
     }
 
     #[test]
@@ -259,10 +286,10 @@ mod tests {
 
     #[test]
     fn backoff_doubles_and_caps() {
-        assert_eq!(backoff_after(1), TimeDelta::minutes(1));
-        assert_eq!(backoff_after(2), TimeDelta::minutes(2));
-        assert_eq!(backoff_after(3), TimeDelta::minutes(4));
-        assert_eq!(backoff_after(7), TimeDelta::minutes(60));
-        assert_eq!(backoff_after(100), TimeDelta::minutes(60));
+        assert_eq!(backoff_after(1), SignedDuration::from_mins(1));
+        assert_eq!(backoff_after(2), SignedDuration::from_mins(2));
+        assert_eq!(backoff_after(3), SignedDuration::from_mins(4));
+        assert_eq!(backoff_after(7), SignedDuration::from_mins(60));
+        assert_eq!(backoff_after(100), SignedDuration::from_mins(60));
     }
 }

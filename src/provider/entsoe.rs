@@ -10,7 +10,7 @@
 
 use std::time::Duration;
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use jiff::Timestamp;
 use quick_xml::{Reader, events::Event};
 use secrecy::{ExposeSecret, SecretString};
 
@@ -63,11 +63,11 @@ impl PriceProvider for EntsoeProvider {
     async fn fetch(
         &self,
         zone: &str,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
+        from: Timestamp,
+        to: Timestamp,
     ) -> Result<PriceSeries, ProviderError> {
-        let period_start = from.format("%Y%m%d%H%M").to_string();
-        let period_end = to.format("%Y%m%d%H%M").to_string();
+        let period_start = from.strftime("%Y%m%d%H%M").to_string();
+        let period_end = to.strftime("%Y%m%d%H%M").to_string();
         let response = self
             .client
             .get(&self.base_url)
@@ -140,7 +140,7 @@ pub fn parse_a44(zone: &str, xml: &str) -> Result<PriceSeries, ProviderError> {
 #[derive(Debug, Default)]
 struct A44Collector {
     path: Vec<String>,
-    period_start: Option<DateTime<Utc>>,
+    period_start: Option<Timestamp>,
     period_resolution: Option<Resolution>,
     position: Option<usize>,
     price: Option<f64>,
@@ -269,18 +269,27 @@ impl A44Collector {
     }
 }
 
-fn parse_timestamp(value: &str) -> Result<DateTime<Utc>, ProviderError> {
-    // ENTSO-E writes timestamps as `YYYY-MM-DDTHH:MMZ`, which RFC 3339 does not accept without seconds.
-    NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%MZ")
-        .map(|naive| naive.and_utc())
+fn parse_timestamp(value: &str) -> Result<Timestamp, ProviderError> {
+    // ENTSO-E writes timestamps as `YYYY-MM-DDTHH:MMZ`, without seconds. Add them, then parse as RFC 3339.
+    let without_zone = value
+        .strip_suffix('Z')
+        .ok_or_else(|| ProviderError::Malformed(format!("timestamp {value} is not UTC")))?;
+    format!("{without_zone}:00Z")
+        .parse::<Timestamp>()
         .map_err(|e| ProviderError::Malformed(format!("timestamp {value}: {e}")))
 }
 
 #[cfg(test)]
 mod tests {
-    use chrono::TimeZone;
-
     use super::*;
+
+    fn ts(y: i32, mo: i32, d: i32, h: i32, mi: i32) -> Timestamp {
+        jiff::civil::date(y as i16, mo as i8, d as i8)
+            .at(h as i8, mi as i8, 0, 0)
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            .expect("valid")
+            .timestamp()
+    }
 
     /// Synthetic A44 document (not a real ENTSO-E response). Two periods, hourly then 15-minute,
     /// in separate series. Replace with real S0.2 fixtures when available.
@@ -312,10 +321,8 @@ mod tests {
 </Publication_MarketDocument>"#
     }
 
-    fn utc(h: u32, m: u32) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 11, 17, h, m, 0)
-            .single()
-            .expect("valid")
+    fn utc(h: i32, m: i32) -> Timestamp {
+        ts(2026, 11, 17, h, m)
     }
 
     #[test]
@@ -324,12 +331,7 @@ mod tests {
         assert_eq!(series.resolution(), Resolution::Hour);
         assert_eq!(series.points().len(), 2);
         assert_eq!(series.points()[0].start, utc(23, 0));
-        assert_eq!(
-            series.points()[1].start,
-            Utc.with_ymd_and_hms(2026, 11, 18, 0, 0, 0)
-                .single()
-                .expect("valid")
-        );
+        assert_eq!(series.points()[1].start, ts(2026, 11, 18, 0, 0));
         assert!((series.points()[1].eur_per_mwh - -3.5).abs() < f64::EPSILON);
     }
 

@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, PoisonError, RwLock};
 
-use chrono::{DateTime, Utc};
+use jiff::{SignedDuration, Timestamp};
 use opentelemetry::{
     KeyValue,
     metrics::{Counter, Meter, ObservableGauge},
@@ -115,10 +115,7 @@ fn observe<F>(
     value: F,
 ) -> ObservableGauge<f64>
 where
-    F: Fn(&MarketState, &str, DateTime<Utc>) -> Option<(f64, Vec<KeyValue>)>
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&MarketState, &str, Timestamp) -> Option<(f64, Vec<KeyValue>)> + Send + Sync + 'static,
 {
     let state = Arc::clone(state);
     meter
@@ -126,7 +123,7 @@ where
         .with_unit(unit)
         .with_description(description)
         .with_callback(move |instrument| {
-            let now = Utc::now();
+            let now = Timestamp::now();
             let cache = state.read().unwrap_or_else(PoisonError::into_inner);
             for zone in cache.zone_codes() {
                 if let Some((reading, attributes)) = value(&cache, zone, now) {
@@ -153,6 +150,6 @@ fn price_attributes(cache: &MarketState, zone: &str) -> Option<Vec<KeyValue>> {
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn seconds(delta: chrono::TimeDelta) -> f64 {
-    delta.num_milliseconds() as f64 / 1000.0
+fn seconds(delta: SignedDuration) -> f64 {
+    delta.as_secs_f64()
 }

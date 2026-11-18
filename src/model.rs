@@ -5,7 +5,7 @@
 //! day 2025-10-01) or hourly (`PT60M`, older history). Points are kept in UTC and must sit on the
 //! resolution grid. Gaps are allowed and are represented by missing points, never filled.
 
-use chrono::{DateTime, TimeDelta, Utc};
+use jiff::{SignedDuration, Timestamp};
 use thiserror::Error;
 
 /// Market time unit of a price series.
@@ -20,10 +20,10 @@ pub enum Resolution {
 impl Resolution {
     /// Length of one interval.
     #[must_use]
-    pub const fn duration(self) -> TimeDelta {
+    pub const fn duration(self) -> SignedDuration {
         match self {
-            Self::Minutes15 => TimeDelta::minutes(15),
-            Self::Hour => TimeDelta::hours(1),
+            Self::Minutes15 => SignedDuration::from_mins(15),
+            Self::Hour => SignedDuration::from_hours(1),
         }
     }
 
@@ -51,7 +51,7 @@ impl Resolution {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PricePoint {
     /// Start of the interval, UTC.
-    pub start: DateTime<Utc>,
+    pub start: Timestamp,
     /// Day-ahead price in EUR/MWh.
     pub eur_per_mwh: f64,
 }
@@ -61,13 +61,13 @@ pub struct PricePoint {
 pub enum SeriesError {
     /// A price is not a finite number.
     #[error("price at {0} is not a finite number")]
-    NonFinitePrice(DateTime<Utc>),
+    NonFinitePrice(Timestamp),
     /// A point does not start on the resolution grid.
     #[error("point at {0} is not aligned to the {1} grid")]
-    Misaligned(DateTime<Utc>, &'static str),
+    Misaligned(Timestamp, &'static str),
     /// Points are not strictly increasing, so there is a duplicate or out-of-order point.
     #[error("point at {0} is duplicated or out of order")]
-    NotIncreasing(DateTime<Utc>),
+    NotIncreasing(Timestamp),
 }
 
 /// Day-ahead prices for one bidding zone.
@@ -90,13 +90,13 @@ impl PriceSeries {
         resolution: Resolution,
         points: Vec<PricePoint>,
     ) -> Result<Self, SeriesError> {
-        let step = resolution.duration().num_seconds();
-        let mut previous: Option<DateTime<Utc>> = None;
+        let step = resolution.duration().as_secs();
+        let mut previous: Option<Timestamp> = None;
         for point in &points {
             if !point.eur_per_mwh.is_finite() {
                 return Err(SeriesError::NonFinitePrice(point.start));
             }
-            if point.start.timestamp().rem_euclid(step) != 0 {
+            if point.start.as_second().rem_euclid(step) != 0 {
                 return Err(SeriesError::Misaligned(point.start, resolution.iso8601()));
             }
             if previous.is_some_and(|prev| point.start <= prev) {
@@ -131,7 +131,7 @@ impl PriceSeries {
 
     /// The point whose interval contains `at`, if the series covers it.
     #[must_use]
-    pub fn point_at(&self, at: DateTime<Utc>) -> Option<&PricePoint> {
+    pub fn point_at(&self, at: Timestamp) -> Option<&PricePoint> {
         let index = self.points.partition_point(|p| p.start <= at);
         let candidate = self.points.get(index.checked_sub(1)?)?;
         (at < candidate.start + self.resolution.duration()).then_some(candidate)
@@ -139,7 +139,7 @@ impl PriceSeries {
 
     /// End of the last covered interval, if any.
     #[must_use]
-    pub fn covered_until(&self) -> Option<DateTime<Utc>> {
+    pub fn covered_until(&self) -> Option<Timestamp> {
         self.points
             .last()
             .map(|p| p.start + self.resolution.duration())
@@ -149,15 +149,15 @@ impl PriceSeries {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
-
-    fn utc(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(y, mo, d, h, mi, 0)
-            .single()
+    fn utc(y: i32, mo: i32, d: i32, h: i32, mi: i32) -> Timestamp {
+        jiff::civil::date(y as i16, mo as i8, d as i8)
+            .at(h as i8, mi as i8, 0, 0)
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
             .expect("valid time")
+            .timestamp()
     }
 
-    fn point(start: DateTime<Utc>, price: f64) -> PricePoint {
+    fn point(start: Timestamp, price: f64) -> PricePoint {
         PricePoint {
             start,
             eur_per_mwh: price,

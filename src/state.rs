@@ -5,14 +5,14 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, TimeDelta, Utc};
+use jiff::{SignedDuration, Timestamp};
 
 use crate::model::{PricePoint, PriceSeries};
 
 #[derive(Debug, Default, Clone)]
 struct ZoneState {
     series: Option<PriceSeries>,
-    last_success: Option<DateTime<Utc>>,
+    last_success: Option<Timestamp>,
 }
 
 /// Price cache keyed by bidding zone.
@@ -44,7 +44,7 @@ impl MarketState {
     ///
     /// Points at or after the first new start are replaced by the new data. Earlier points are
     /// kept. If the resolution changed, the old series is replaced entirely.
-    pub fn record_success(&mut self, fetched_at: DateTime<Utc>, incoming: PriceSeries) {
+    pub fn record_success(&mut self, fetched_at: Timestamp, incoming: PriceSeries) {
         let zone = self.zones.entry(incoming.zone().to_owned()).or_default();
         let existing = zone.series.take();
         zone.series = match (existing, incoming.points().first().map(|p| p.start)) {
@@ -69,7 +69,7 @@ impl MarketState {
 
     /// The point whose interval contains `now`.
     #[must_use]
-    pub fn current(&self, zone: &str, now: DateTime<Utc>) -> Option<PricePoint> {
+    pub fn current(&self, zone: &str, now: Timestamp) -> Option<PricePoint> {
         self.zones
             .get(zone)?
             .series
@@ -80,7 +80,7 @@ impl MarketState {
 
     /// The point for the interval after the one containing `now`.
     #[must_use]
-    pub fn next(&self, zone: &str, now: DateTime<Utc>) -> Option<PricePoint> {
+    pub fn next(&self, zone: &str, now: Timestamp) -> Option<PricePoint> {
         let series = self.zones.get(zone)?.series.as_ref()?;
         let current = series.point_at(now)?;
         series
@@ -96,21 +96,21 @@ impl MarketState {
 
     /// Time since the last successful fetch for the zone, if any fetch has succeeded.
     #[must_use]
-    pub fn data_age(&self, zone: &str, now: DateTime<Utc>) -> Option<TimeDelta> {
+    pub fn data_age(&self, zone: &str, now: Timestamp) -> Option<SignedDuration> {
         self.zones.get(zone)?.last_success.map(|at| now - at)
     }
 
     /// Time from `now` until the cached data ends, if any data is cached. Negative when the
     /// cache has already run out.
     #[must_use]
-    pub fn horizon(&self, zone: &str, now: DateTime<Utc>) -> Option<TimeDelta> {
+    pub fn horizon(&self, zone: &str, now: Timestamp) -> Option<SignedDuration> {
         let covered = self.zones.get(zone)?.series.as_ref()?.covered_until()?;
         Some(covered - now)
     }
 
     /// End of the cached coverage for the zone, if any.
     #[must_use]
-    pub fn covered_until(&self, zone: &str) -> Option<DateTime<Utc>> {
+    pub fn covered_until(&self, zone: &str) -> Option<Timestamp> {
         self.zones.get(zone)?.series.as_ref()?.covered_until()
     }
 
@@ -123,18 +123,18 @@ impl MarketState {
 
 #[cfg(test)]
 mod tests {
-    use chrono::TimeZone;
-
     use super::*;
     use crate::model::Resolution;
 
-    fn utc(h: u32, m: u32) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 11, 17, h, m, 0)
-            .single()
+    fn utc(h: i8, m: i8) -> Timestamp {
+        jiff::civil::date(2026, 11, 17)
+            .at(h, m, 0, 0)
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
             .expect("valid")
+            .timestamp()
     }
 
-    fn series(res: Resolution, points: &[(DateTime<Utc>, f64)]) -> PriceSeries {
+    fn series(res: Resolution, points: &[(Timestamp, f64)]) -> PriceSeries {
         let points = points
             .iter()
             .map(|&(start, eur_per_mwh)| PricePoint { start, eur_per_mwh })
@@ -201,7 +201,7 @@ mod tests {
         );
         assert_eq!(
             state.data_age("SE3", utc(10, 45)),
-            Some(TimeDelta::minutes(45))
+            Some(SignedDuration::from_mins(45))
         );
     }
 

@@ -4,7 +4,7 @@ pub mod entsoe;
 
 use std::future::Future;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use thiserror::Error;
 
 use crate::model::{PriceSeries, SeriesError};
@@ -47,7 +47,7 @@ pub trait PriceProvider: Send + Sync {
     fn fetch(
         &self,
         zone: &str,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
+        from: Timestamp,
+        to: Timestamp,
     ) -> impl Future<Output = Result<PriceSeries, ProviderError>> + Send;
 }
