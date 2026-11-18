@@ -12,19 +12,19 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 
 | Story | Status | Notes |
 | --- | --- | --- |
-| S0.1 ENTSO-E token | Open (you) | Needs your registration, up to 3 working days |
+| S0.1 ENTSO-E token | Done | Key obtained by the owner and read from a file, never committed. Verified with real requests |
 | S0.2 A44 response spike | Partly done | Real SE3 responses saved in tests/fixtures: 2026-11-18 (95 of 96 positions), spring DST 2026-03-29 (91 of 92), autumn DST 2026-10-25 (86 of 100). Gaps are source-side and stay empty. Local-midnight documents handled by a 2h coverage tolerance. Before publication (2026-11-18 07:23 UTC) the next-day request returns HTTP 200 with reason 999, which the parser maps to no-data. Publication time is being polled every 10 minutes. Still needed: the publication time, rate-limit check (not probed, to avoid using budget). Gaps are re-fetched hourly (S1.5) |
 | S0.3 OTel spike | Done | opentelemetry 0.33.1; gauge pushed to collector; ADR-002 |
 | S0.4 ENTSO-E terms | Partly done | Licence unresolved (pages blocked to fetcher); 400 req/min from snippet, confirm manually |
 | S0.5 ADRs | Done | ADR-002 Accepted; 001, 003, 004 Proposed for review |
 | S1.1 Scaffold | Done locally | make all passes; distroless image builds and runs; CI not yet run on GitHub |
-| S1.2 Config | Done | Unknown-zone rejection waits for S1.3 registry (zones are EIC codes for now) |
-| S1.3 Zone registry | Blocked | EIC list unreadable to fetcher. Confirmed SE3 10Y1001A1001A46L, DE-LU 10Y1001A1001A82H, NO2 10YNO-2--------T |
+| S1.2 Config | Done | Zones resolve through the registry; unknown zones exit 2 with the known list. Token from file or env |
+| S1.3 Zone registry | Done | 13 zones (SE1-4, NO1-5, DK1-2, FI, DE-LU). Every EIC code checked against the live API. Timezones recorded for S2.2. DE-LU returns two series; the one with most points is used (not yet checked against the ENTSO-E web UI) |
 | S1.4 ENTSO-E provider | Done against synthetic fixtures | Parser and HTTP error mapping (401, 429, 5xx, 999 no-data, token redaction). DST days: 92 and 100 intervals tested. Needs S0.2 real fixtures |
 | S1.5 Scheduler | Done | Pure policy tested. Hourly full refresh per zone, so gaps the source fills later reach the cache (max 24 requests per zone per day, plus fetches while coverage is short). Publish window 11:00 UTC; <=1 request per zone per 15 min |
 | S1.6 Gauges over OTLP | Done, E2E verified | price, .next, data.age, data.horizon arrive at a collector with zone/type/source/resolution attributes; values match mock. Found and fixed: meter taken from global provider before it was set (no-op) |
 | S2.1 Staleness and horizon | Done | data.age and data.horizon exported |
-| S2.2 Derived metrics | Not started | Needs S1.3 zone timezones for local-day stats |
+| S2.2 Derived metrics | Blocked on tzdb | Local-day statistics need named timezones. jiff needs its timezone database feature for that, a dependency decision |
 | S2.3 Health and readiness | Done | /healthz liveness; /ready after first successful fetch |
 | S2.4 Logs and self-telemetry | Done | JSON logs; `energy.market.fetch.attempts` counter by zone and outcome |
 | S2.5 Graceful shutdown with flush | Done, verified | SIGTERM: HTTP stops, scheduler aborts, last metrics flushed to collector | SIGTERM/ctrl-c stops HTTP, aborts scheduler, flushes meter provider |
