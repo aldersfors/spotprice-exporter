@@ -18,9 +18,14 @@ pub enum ConfigError {
     /// No bidding zones were configured.
     #[error("SPOTPRICE_ZONES must list at least one bidding zone")]
     NoZones,
-    /// A zone code is not shaped like an EIC bidding zone code.
-    #[error("SPOTPRICE_ZONES contains an invalid zone code: {0:?}")]
-    InvalidZone(String),
+    /// A zone is not in the registry. The message lists the known names.
+    #[error("SPOTPRICE_ZONES contains an unknown zone {zone:?}; known zones: {known}")]
+    UnknownZone {
+        /// The value that was not recognised.
+        zone: String,
+        /// Comma-separated list of supported names.
+        known: String,
+    },
     /// Both the token and the token file were given.
     #[error("set either SPOTPRICE_ENTSOE_TOKEN or SPOTPRICE_ENTSOE_TOKEN_FILE, not both")]
     TokenConflict,
@@ -80,21 +85,34 @@ impl Config {
             .and_then(Self::validated)
     }
 
-    /// Validate an already-parsed configuration.
+    /// Validate an already-parsed configuration. Zone names are resolved to EIC codes, duplicates
+    /// are removed, and blank entries are skipped.
     ///
     /// # Errors
     ///
-    /// Returns [`ConfigError`] when zones or the token are invalid.
-    pub fn validated(self) -> Result<Self, ConfigError> {
-        if self.zones.iter().all(|z| z.trim().is_empty()) {
-            return Err(ConfigError::NoZones);
-        }
-        for zone in &self.zones {
-            let code = zone.trim();
-            if !is_zone_code_shape(code) {
-                return Err(ConfigError::InvalidZone(zone.clone()));
+    /// Returns [`ConfigError`] when no zone is given, a zone is unknown, or the token is invalid.
+    pub fn validated(mut self) -> Result<Self, ConfigError> {
+        let mut resolved: Vec<String> = Vec::new();
+        for value in &self.zones {
+            if value.trim().is_empty() {
+                continue;
+            }
+            let zone = crate::zones::lookup(value).ok_or_else(|| ConfigError::UnknownZone {
+                zone: value.clone(),
+                known: crate::zones::ZONES
+                    .iter()
+                    .map(|z| z.name)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            })?;
+            if !resolved.iter().any(|eic| eic == zone.eic) {
+                resolved.push(zone.eic.to_owned());
             }
         }
+        if resolved.is_empty() {
+            return Err(ConfigError::NoZones);
+        }
+        self.zones = resolved;
         self.resolve_token()?;
         Ok(self)
     }
@@ -119,12 +137,6 @@ impl Config {
         }
         Ok(SecretString::from(token))
     }
-}
-
-/// Shape check only: EIC bidding zone codes are 16 characters. Membership in the zone
-/// registry is checked separately once the registry exists (backlog S1.3).
-fn is_zone_code_shape(code: &str) -> bool {
-    code.len() == 16 && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 #[cfg(test)]
@@ -153,9 +165,18 @@ mod tests {
     }
 
     #[test]
-    fn rejects_malformed_zone_code() {
-        let err = parse(&["--zones", "SE3", "--entsoe-token", "abc"]).expect_err("short code");
-        assert!(matches!(err, ConfigError::InvalidZone(z) if z == "SE3"));
+    fn rejects_unknown_zone() {
+        let err = parse(&["--zones", "SE9", "--entsoe-token", "abc"]).expect_err("unknown");
+        assert!(matches!(err, ConfigError::UnknownZone { zone, .. } if zone == "SE9"));
+    }
+
+    #[test]
+    fn resolves_names_to_eic_codes_and_removes_duplicates() {
+        let cfg = parse(&["--zones", "se3,SE4,SE3,", "--entsoe-token", "abc"]).expect("valid");
+        assert_eq!(
+            cfg.zones,
+            vec!["10Y1001A1001A46L".to_owned(), "10Y1001A1001A47J".to_owned()]
+        );
     }
 
     #[test]

@@ -8,6 +8,7 @@ pub mod provider;
 pub mod scheduler;
 pub mod state;
 pub mod telemetry;
+pub mod zones;
 
 /// Crate version as set in `Cargo.toml`.
 #[must_use]
