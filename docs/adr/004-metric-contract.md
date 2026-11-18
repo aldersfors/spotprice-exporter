@@ -23,6 +23,8 @@ Use custom names under the `energy.market.*` namespace, documented in `docs/metr
 | `energy.market.data.age` | gauge | s | Seconds since the last successful fetch |
 | `energy.market.data.horizon` | gauge | s | How far ahead the cache covers |
 | `energy.market.fetch.attempts` | counter | {attempt} | Fetch attempts per zone and `energy.market.fetch.result` |
+| `energy.market.price.day.min` / `.max` / `.avg` | gauge | EUR/MWh | Local calendar day statistics, once the cache covers the whole day |
+| `energy.market.price.cheapest_window.start` | gauge | s | Start of the cheapest run of intervals from now on. Run length in `energy.market.window` |
 
 Attributes: `energy.market.bidding_zone` (for example `SE3`), `energy.market.type` (`day_ahead`),
 `energy.market.resolution` (`PT15M` or `PT60M`), `energy.market.source` (`entsoe`),
