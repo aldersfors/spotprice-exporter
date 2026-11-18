@@ -1,6 +1,6 @@
 # ADR-001: Provider abstraction for price sources
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-18)
 **Date:** 2026-11-17
 
 ## Context

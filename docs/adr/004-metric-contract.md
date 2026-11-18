@@ -1,6 +1,6 @@
 # ADR-004: Custom metric contract for energy market prices
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-18)
 **Date:** 2026-11-17
 
 ## Context

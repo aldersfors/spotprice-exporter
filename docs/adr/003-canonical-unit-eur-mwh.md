@@ -1,6 +1,6 @@
 # ADR-003: Canonical price unit is EUR/MWh
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-18)
 **Date:** 2026-11-17
 
 ## Context
