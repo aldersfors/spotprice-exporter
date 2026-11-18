@@ -325,6 +325,61 @@ mod tests {
         ts(2026, 11, 17, h, m)
     }
 
+    /// Build an A44 document for one bidding-zone day in UTC with `points` 15-minute positions.
+    /// Used for DST-shaped days, where the local day has 92 or 100 points.
+    fn day_document(start_utc: &str, points: usize) -> String {
+        let body: String = (1..=points)
+            .map(|pos| {
+                format!(
+                    "<Point><position>{pos}</position><price.amount>{:.2}</price.amount></Point>",
+                    50.0 + pos as f64 / 10.0
+                )
+            })
+            .collect();
+        format!(
+            "<Publication_MarketDocument><TimeSeries><Period>\
+             <timeInterval><start>{start_utc}</start></timeInterval>\
+             <resolution>PT15M</resolution>{body}</Period></TimeSeries></Publication_MarketDocument>"
+        )
+    }
+
+    #[test]
+    fn spring_forward_day_has_92_intervals() {
+        // Europe/Stockholm: 2026-03-29 is 23 hours long, so the local day is 92 quarter-hours.
+        let xml = day_document("2026-03-28T23:00Z", 92);
+        let series = parse_a44("SE3", &xml).expect("parses");
+        assert_eq!(series.points().len(), 92);
+        assert_eq!(series.covered_until(), Some(utc_at(2026, 3, 29, 22, 0)));
+    }
+
+    #[test]
+    fn autumn_back_day_has_100_intervals() {
+        // Europe/Stockholm: 2026-10-25 is 25 hours long, so the local day is 100 quarter-hours.
+        let xml = day_document("2026-10-24T22:00Z", 100);
+        let series = parse_a44("SE3", &xml).expect("parses");
+        assert_eq!(series.points().len(), 100);
+        // 25 hours from 22:00 UTC on 2026-10-24 ends at 23:00 UTC on 2026-10-25.
+        assert_eq!(series.covered_until(), Some(utc_at(2026, 10, 25, 23, 0)));
+    }
+
+    #[test]
+    fn dst_day_lookup_is_by_utc_instant() {
+        let xml = day_document("2026-10-24T22:00Z", 100);
+        let series = parse_a44("SE3", &xml).expect("parses");
+        // 01:00 local (CEST) on 2026-10-25 is 23:00 UTC on 2026-10-24, the first interval.
+        let first = series
+            .point_at(utc_at(2026, 10, 24, 22, 0))
+            .expect("covered");
+        assert_eq!(first.start, utc_at(2026, 10, 24, 22, 0));
+        // The last interval starts at 22:45 UTC, so 23:00 UTC is past the end of the day.
+        assert!(series.point_at(utc_at(2026, 10, 25, 22, 45)).is_some());
+        assert!(series.point_at(utc_at(2026, 10, 25, 23, 0)).is_none());
+    }
+
+    fn utc_at(y: i32, mo: i32, d: i32, h: i32, mi: i32) -> Timestamp {
+        ts(y, mo, d, h, mi)
+    }
+
     #[test]
     fn parses_hourly_document_with_negative_prices() {
         let series = parse_a44("SE3", synthetic_hourly()).expect("parses");
@@ -392,5 +447,84 @@ mod tests {
             parse_a44("SE3", xml),
             Err(ProviderError::Malformed(_))
         ));
+    }
+}
+
+#[cfg(test)]
+mod real_fixture_tests {
+    use super::*;
+
+    fn ts(y: i32, mo: i32, d: i32, h: i32, mi: i32) -> Timestamp {
+        jiff::civil::date(y as i16, mo as i8, d as i8)
+            .at(h as i8, mi as i8, 0, 0)
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            .expect("valid")
+            .timestamp()
+    }
+
+    /// Real ENTSO-E A44 response for SE3, the local day 2026-11-18 (CET), fetched 2026-11-18.
+    /// The document runs 23:00 UTC to 23:00 UTC. It has 95 of 96 positions: position 44 (09:45 UTC) is absent from the source.
+    const SE3_2026_11_18: &str = include_str!("../../tests/fixtures/a44-se3-2026-11-18.xml");
+
+    #[test]
+    fn real_response_parses_with_source_gap_left_empty() {
+        let series = parse_a44("10Y1001A1001A46L", SE3_2026_11_18).expect("parses");
+        assert_eq!(series.resolution(), Resolution::Minutes15);
+        assert_eq!(series.points().len(), 95);
+        assert_eq!(series.covered_until(), Some(ts(2026, 11, 18, 23, 0)));
+        let gap = ts(2026, 11, 18, 9, 45);
+        assert!(
+            series.point_at(gap).is_none(),
+            "missing source interval must stay a gap"
+        );
+        let after = ts(2026, 11, 18, 10, 0);
+        assert!(series.point_at(after).is_some());
+    }
+}
+
+#[cfg(test)]
+mod dst_fixture_tests {
+    use super::*;
+
+    fn ts(y: i32, mo: i32, d: i32, h: i32, mi: i32) -> Timestamp {
+        jiff::civil::date(y as i16, mo as i8, d as i8)
+            .at(h as i8, mi as i8, 0, 0)
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            .expect("valid")
+            .timestamp()
+    }
+
+    /// Real SE3 response for the spring-forward day 2026-03-29 (23 hours). 92 positions, 91 with
+    /// prices: position 18 is absent from the source.
+    const SE3_SPRING_DST: &str = include_str!("../../tests/fixtures/a44-se3-spring-dst.xml");
+    /// Real SE3 response for the autumn-back day 2026-10-25 (25 hours). 100 positions, 86 with
+    /// prices: 14 positions are absent from the source.
+    const SE3_AUTUMN_DST: &str = include_str!("../../tests/fixtures/a44-se3-autumn-dst.xml");
+
+    fn utc(y: i32, mo: i32, d: i32, h: i32, mi: i32) -> Timestamp {
+        ts(y, mo, d, h, mi)
+    }
+
+    #[test]
+    fn spring_forward_real_response_has_one_source_gap() {
+        let series = parse_a44("10Y1001A1001A46L", SE3_SPRING_DST).expect("parses");
+        assert_eq!(series.points().len(), 91);
+        assert_eq!(series.resolution(), Resolution::Minutes15);
+        // Position 18 is 2026-03-28 23:00 UTC + 17 * 15 min = 2026-03-29 03:15 UTC.
+        assert!(series.point_at(utc(2026, 3, 29, 3, 15)).is_none());
+        assert!(series.point_at(utc(2026, 3, 29, 3, 30)).is_some());
+    }
+
+    #[test]
+    fn autumn_back_real_response_keeps_gaps_as_gaps() {
+        let series = parse_a44("10Y1001A1001A46L", SE3_AUTUMN_DST).expect("parses");
+        assert_eq!(series.points().len(), 86);
+        // Position 27 is 2026-10-24 22:00 UTC + 26 * 15 min = 2026-10-25 04:30 UTC.
+        assert!(series.point_at(utc(2026, 10, 25, 4, 30)).is_none());
+        // Position 26 (04:15 UTC) is present.
+        assert!(series.point_at(utc(2026, 10, 25, 4, 15)).is_some());
+        // All positions are unique and sorted; the parser would have rejected duplicates.
+        let starts: Vec<_> = series.points().iter().map(|p| p.start).collect();
+        assert!(starts.windows(2).all(|w| w[0] < w[1]));
     }
 }
