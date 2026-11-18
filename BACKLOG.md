@@ -29,6 +29,7 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | S2.4 Logs and self-telemetry | Done | JSON logs; `energy.market.fetch.attempts` counter by zone and outcome |
 | S2.5 Graceful shutdown with flush | Done, verified | SIGTERM: HTTP stops, scheduler aborts, last metrics flushed to collector | SIGTERM/ctrl-c stops HTTP, aborts scheduler, flushes meter provider |
 | S3.1 Helm chart | Done, rendered and linted | charts/spotprice-exporter. Single replica, Recreate, no Service, token via file from secret. Found in smoke test: token file was unreadable (fixed with runAsUser/fsGroup 65532, mode 0440) |
+| S3.2 Release pipeline | Written, not verified | release-please config and workflow added. Chart version, appVersion and values.yaml image tag bumped by release-please. Unverified: the yaml `path`/`jsonpath` extra-file keys, and the first real release (needs the GitHub repo) |
 | S3.3 kind smoke test | Done, passing | hack/kind-smoke.sh on a private kubeconfig. Found and fixed: token file unreadable (uid 65532), NetworkPolicy blocked the collector (chart now refuses to render without an OTLP destination) |
 | S3.4 Supply chain | Done | deny.toml; cargo-deny passes locally and in CI job |
 | S3.5 Docs | Done | docs/metric-contract.md, getting-started.md, runbook.md, data-sources.md |
