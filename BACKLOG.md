@@ -13,15 +13,15 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | Story | Status | Notes |
 | --- | --- | --- |
 | S0.1 ENTSO-E token | Open (you) | Needs your registration, up to 3 working days |
-| S0.2 A44 response spike | Blocked on S0.1 | Parser tested on synthetic A44 documents only |
+| S0.2 A44 response spike | Partly done | Real SE3 responses saved in tests/fixtures: 2026-11-18 (95 of 96 positions), spring DST 2026-03-29 (91 of 92), autumn DST 2026-10-25 (86 of 100). Gaps are source-side and stay empty. Local-midnight documents handled by a 2h coverage tolerance. Before publication (2026-11-18 07:23 UTC) the next-day request returns HTTP 200 with reason 999, which the parser maps to no-data. Publication time is being polled every 10 minutes. Still needed: the publication time, rate-limit check (not probed, to avoid using budget). Gaps are re-fetched hourly (S1.5) |
 | S0.3 OTel spike | Done | opentelemetry 0.33.1; gauge pushed to collector; ADR-002 |
 | S0.4 ENTSO-E terms | Partly done | Licence unresolved (pages blocked to fetcher); 400 req/min from snippet, confirm manually |
 | S0.5 ADRs | Done | ADR-002 Accepted; 001, 003, 004 Proposed for review |
 | S1.1 Scaffold | Done locally | make all passes; distroless image builds and runs; CI not yet run on GitHub |
 | S1.2 Config | Done | Unknown-zone rejection waits for S1.3 registry (zones are EIC codes for now) |
 | S1.3 Zone registry | Blocked | EIC list unreadable to fetcher. Confirmed SE3 10Y1001A1001A46L, DE-LU 10Y1001A1001A82H, NO2 10YNO-2--------T |
-| S1.4 ENTSO-E provider | Done against synthetic fixtures | Parser and HTTP error mapping (401, 429, 5xx, 999 no-data, token redaction). Needs S0.2 real fixtures |
-| S1.5 Scheduler | Done | Pure policy functions tested; publish window 11:00 UTC; <=1 request per zone per 15 min |
+| S1.4 ENTSO-E provider | Done against synthetic fixtures | Parser and HTTP error mapping (401, 429, 5xx, 999 no-data, token redaction). DST days: 92 and 100 intervals tested. Needs S0.2 real fixtures |
+| S1.5 Scheduler | Done | Pure policy tested. Hourly full refresh per zone, so gaps the source fills later reach the cache (max 24 requests per zone per day, plus fetches while coverage is short). Publish window 11:00 UTC; <=1 request per zone per 15 min |
 | S1.6 Gauges over OTLP | Done, E2E verified | price, .next, data.age, data.horizon arrive at a collector with zone/type/source/resolution attributes; values match mock. Found and fixed: meter taken from global provider before it was set (no-op) |
 | S2.1 Staleness and horizon | Done | data.age and data.horizon exported |
 | S2.2 Derived metrics | Not started | Needs S1.3 zone timezones for local-day stats |
@@ -252,6 +252,16 @@ Lives in `~/projects/jarsater/k8s-home-lab`. Two parts: Renovate scans the new r
 - [ ] Decided: Renovate only first; revisit once `energy.market.data.age` exists as a health query
 
 ---
+
+## Epic 6: Maintenance
+
+### S6.1 Migrate chrono to jiff (P1), done
+**Background.** RUSTSEC-2026-0543 marks chrono as unmaintained, with no safe upgrade inside chrono. Resolved by this migration.
+**Description of Problem.** Replaced chrono with jiff 1.0.1 in the model, state, scheduler, metrics and provider code. The change touches most time handling, so it needs its own PR with the existing tests as the safety net.
+**Definition of Done**
+- [x] No chrono in `Cargo.lock`
+- [x] The `RUSTSEC-2026-0543` ignore removed from `deny.toml` (cargo-deny passes)
+- [x] All tests pass, including the DST and real-fixture tests (40 tests); real API run still fetches 95 points for SE3
 
 ## Ordering
 
