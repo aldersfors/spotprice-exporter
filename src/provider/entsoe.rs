@@ -147,6 +147,8 @@ struct A44Collector {
     resolutions_seen: Vec<Resolution>,
     /// One list of points per `TimeSeries` block. Blocks are never merged.
     series: Vec<Vec<PricePoint>>,
+    /// Sequence number of each `TimeSeries`, from `classificationSequence_...position`, if present.
+    sequences: Vec<Option<u32>>,
     ack_reason: Option<String>,
     is_acknowledgement: bool,
 }
@@ -155,7 +157,10 @@ impl A44Collector {
     fn start(&mut self, name: &str) {
         match name {
             "Acknowledgement_MarketDocument" => self.is_acknowledgement = true,
-            "TimeSeries" => self.series.push(Vec::new()),
+            "TimeSeries" => {
+                self.series.push(Vec::new());
+                self.sequences.push(None);
+            }
             "Period" => {
                 self.period_start = None;
                 self.period_resolution = None;
@@ -239,6 +244,14 @@ impl A44Collector {
                         .map_err(|_| ProviderError::Malformed(format!("bad price {value}")))?,
                 );
             }
+            (
+                Some("classificationSequence_AttributeInstanceComponent.position"),
+                Some("TimeSeries"),
+            ) => {
+                if let Some(slot) = self.sequences.last_mut() {
+                    *slot = value.parse().ok();
+                }
+            }
             (Some("code"), Some("Reason")) => self.ack_reason = Some(value.to_owned()),
             _ => {}
         }
@@ -257,28 +270,40 @@ impl A44Collector {
                 )),
             };
         }
-        // Several TimeSeries can cover the same day (DK1 and DE-LU do, with mRID 1 and 2). Merging
-        // them would fail the strictly-increasing check, and picking by content would be a guess.
-        // Keep the most complete series, first on ties, and say so in the logs.
-        let mut chosen: Option<Vec<PricePoint>> = None;
+        // Several TimeSeries can cover the same day. DE-LU publishes Sequence 1 (SDAC, position 1)
+        // and Sequence 2 (EXAA's separate 10:15 auction). Merging them would fail the
+        // strictly-increasing check, so one series is chosen. Sequence 1 is the SDAC price.
+        // Without a sequence tag, the most complete series is used.
         let series_count = self.series.len();
-        for candidate in self.series {
-            if chosen
-                .as_ref()
-                .is_none_or(|best| candidate.len() > best.len())
+        let sequence_one = self
+            .series
+            .iter()
+            .zip(self.sequences.iter())
+            .find(|(_, sequence)| **sequence == Some(1))
+            .map(|(points, _)| points.clone());
+        let mut points = if let Some(points) = sequence_one {
+            points
+        } else {
             {
-                chosen = Some(candidate);
+                let mut chosen: Option<Vec<PricePoint>> = None;
+                for candidate in self.series {
+                    if chosen
+                        .as_ref()
+                        .is_none_or(|best| candidate.len() > best.len())
+                    {
+                        chosen = Some(candidate);
+                    }
+                }
+                if series_count > 1 {
+                    tracing::warn!(
+                        zone,
+                        series = series_count,
+                        "document has several time series without a sequence 1; using the most complete"
+                    );
+                }
+                chosen.unwrap_or_default()
             }
-        }
-        let mut points = chosen.unwrap_or_default();
-        if series_count > 1 {
-            tracing::warn!(
-                zone,
-                series = series_count,
-                points = points.len(),
-                "document has several time series; using the most complete"
-            );
-        }
+        };
         if points.is_empty() {
             return Err(ProviderError::NoData);
         }
@@ -595,11 +620,33 @@ mod multi_series_tests {
     }
 
     #[test]
-    fn de_lu_keeps_the_most_complete_series() {
+    fn de_lu_uses_sequence_one_the_sdac_price() {
         let series = parse_a44("10Y1001A1001A82H", DE_LU_2026_11_18).expect("parses");
-        // The first series has 96 points and the second 95. The first is kept.
-        assert_eq!(series.points().len(), 96);
-        assert!((series.points()[0].eur_per_mwh - 116.68).abs() < 0.01);
+        // Sequence 1 (SDAC) is the 95-point series starting at 108.86. Sequence 2 is EXAA's
+        // separate 10:15 auction, a 96-point series starting at 116.68, and is not used.
+        assert_eq!(series.points().len(), 95);
+        assert!((series.points()[0].eur_per_mwh - 108.86).abs() < 0.01);
+    }
+
+    #[test]
+    fn sequence_one_wins_even_when_shorter() {
+        let xml = format!(
+            "<Publication_MarketDocument>{}</Publication_MarketDocument>",
+            [(2u32, 0.0), (3u32, 100.0)]
+                .iter()
+                .enumerate()
+                .map(|(i, &(count, base))| {
+                    let points: String = (1..=count)
+                        .map(|p| format!("<Point><position>{p}</position><price.amount>{:.2}</price.amount></Point>", base + p as f64))
+                        .collect();
+                    let sequence = if i == 0 { 2 } else { 1 };
+                    format!("<TimeSeries><classificationSequence_AttributeInstanceComponent.position>{sequence}</classificationSequence_AttributeInstanceComponent.position><Period><timeInterval><start>2026-11-17T23:00Z</start></timeInterval><resolution>PT15M</resolution>{points}</Period></TimeSeries>")
+                })
+                .collect::<String>()
+        );
+        let series = parse_a44("10Y1001A1001A46L", &xml).expect("parses");
+        assert_eq!(series.points().len(), 3);
+        assert!((series.points()[0].eur_per_mwh - 101.0).abs() < f64::EPSILON);
     }
 
     #[test]

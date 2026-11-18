@@ -19,7 +19,7 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | S0.5 ADRs | Done | ADR-002 Accepted; 001, 003, 004 Proposed for review |
 | S1.1 Scaffold | Done locally | make all passes; distroless image builds and runs; CI not yet run on GitHub |
 | S1.2 Config | Done | Zones resolve through the registry; unknown zones exit 2 with the known list. Token from file or env |
-| S1.3 Zone registry | Done | 13 zones (SE1-4, NO1-5, DK1-2, FI, DE-LU). Every EIC code checked against the live API. Timezones recorded for S2.2. DE-LU returns two series; the one with most points is used (not yet checked against the ENTSO-E web UI) |
+| S1.3 Zone registry | Done | 13 zones (SE1-4, NO1-5, DK1-2, FI, DE-LU). Every EIC code checked against the live API. Timezones recorded for S2.2. DE-LU resolved: the API returns Sequence 1 (SDAC, tagged position 1) and Sequence 2 (EXAA 10:15 auction). The parser uses Sequence 1. Confirmed against the ENTSO-E table for 18/11/2026, which is shown in UTC |
 | S1.4 ENTSO-E provider | Done against synthetic fixtures | Parser and HTTP error mapping (401, 429, 5xx, 999 no-data, token redaction). DST days: 92 and 100 intervals tested. Needs S0.2 real fixtures |
 | S1.5 Scheduler | Done | Pure policy tested. Hourly full refresh per zone, so gaps the source fills later reach the cache (max 24 requests per zone per day, plus fetches while coverage is short). Publish window 11:00 UTC; <=1 request per zone per 15 min |
 | S1.6 Gauges over OTLP | Done, E2E verified | price, .next, data.age, data.horizon arrive at a collector with zone/type/source/resolution attributes; values match mock. Found and fixed: meter taken from global provider before it was set (no-op) |
