@@ -13,7 +13,7 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | Story | Status | Notes |
 | --- | --- | --- |
 | S0.1 ENTSO-E token | Done | Key obtained by the owner and read from a file, never committed. Verified with real requests |
-| S0.2 A44 response spike | Partly done | Real SE3 responses saved in tests/fixtures: 2026-11-18 (95 of 96 positions), spring DST 2026-03-29 (91 of 92), autumn DST 2026-10-25 (86 of 100). Gaps are source-side and stay empty. Local-midnight documents handled by a 2h coverage tolerance. Before publication (2026-11-18 07:23 UTC) the next-day request returns HTTP 200 with reason 999, which the parser maps to no-data. Publication time is being polled every 10 minutes. Still needed: the publication time, rate-limit check (not probed, to avoid using budget). Gaps are re-fetched hourly (S1.5) |
+| S0.2 A44 response spike | Done, rate limit not tested | Real responses in tests/fixtures: normal day, both DST days, next day. Next-day prices first appeared at 12:08 UTC (poll every 10 min; 11:58 UTC had none), so publication is around 12:00 UTC (13:00 CET). Rate limit deliberately not probed: a test that reaches 400 requests a minute risks the token, per the helpdesk. The exporter peaks at one request per zone every 15 minutes |
 | S0.3 OTel spike | Done | opentelemetry 0.33.1; gauge pushed to collector; ADR-002 |
 | S0.4 ENTSO-E terms | Done (owner confirmed) | Owner confirmed the licence is acceptable, 2026-11-18. Terms not re-read by the exporter's authors. Re-check before any public image. See docs/data-sources.md |
 | S0.5 ADRs | Done | ADR-002 Accepted; 001, 003, 004 Proposed for review |
