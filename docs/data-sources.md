@@ -24,25 +24,14 @@ Document type A44 (day-ahead prices). Endpoint `https://web-api.tp.entsoe.eu/api
 - Exceeding the limit returns HTTP 429 (per a Fingrid mirror of the API, not ENTSO-E directly).
 - No daily quota was found. The poller uses a handful of requests per day, far below the limit.
 
-### Terms of use and licence (NOT RESOLVED)
+### Terms of use and licence (confirmed by the owner, 2026-11-18)
 
-**VERIFY WITH LEGAL COUNSEL before publishing a public image or redistributing data.**
+The owner has confirmed that the licence is acceptable for this use. The terms were not re-read
+by the exporter's authors. If the image is ever published publicly, re-read the current Terms of
+Use and keep the attribution it asks for.
 
-The sources found disagree:
-
-- A 2019 ENTSO-E announcement says TSOs agreed to release data under an open licence, so users need
-  no permission from data owners before reuse. Source: <https://www.entsoe.eu/news/2019/02/01/tsos-increase-number-of-open-data-available-through-entso-e-s-transparency-platform/>
-- An openmod discussion says the Terms and Conditions do not give a proper licence, and users must
-  check with each primary data owner. Source: <https://groups.google.com/g/openmod-initiative/c/C9NsEpyAzJY>
-- A 2016 ETUG minutes record refers to a copyright provision added to the Terms of Use in January 2015.
-- The ENTSO-E website disclaimer prohibits use of content beyond the Terms of Use without written permission.
-
-The current Terms of Use page (transparency.entsoe.eu, knowledge base) returned HTTP 400 to the fetcher.
-Read it directly and record: the licence, attribution wording, and whether redistribution or
-commercial use is allowed.
-
-Until this is resolved, the exporter is for private use. Do not publish a public image that
-redistributes ENTSO-E data.
+Background, for reference: the 2019 ENTSO-E announcement on open data is the most permissive
+source found. Other sources disagree, and the terms page itself could not be fetched.
 
 ## Other sources (not used in v1)
 
@@ -54,6 +43,10 @@ redistributes ENTSO-E data.
 | aWATTar | DE, AT | none | Not used in v1. Hourly only (not verified). |
 
 ## Publication timing (to measure in S0.2)
+
+Day-ahead results clear once a day, on a fixed schedule (around 12:45 CET). What is not yet known is
+when the data appears on the API. The S0.2 poll measures that.
+
 
 - Day-ahead market clears around 12:45 CET. Next-day prices become available from about 13:00 (other
   sources; ENTSO-E latency not verified).

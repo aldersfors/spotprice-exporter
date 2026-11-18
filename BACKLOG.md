@@ -15,7 +15,7 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | S0.1 ENTSO-E token | Done | Key obtained by the owner and read from a file, never committed. Verified with real requests |
 | S0.2 A44 response spike | Partly done | Real SE3 responses saved in tests/fixtures: 2026-11-18 (95 of 96 positions), spring DST 2026-03-29 (91 of 92), autumn DST 2026-10-25 (86 of 100). Gaps are source-side and stay empty. Local-midnight documents handled by a 2h coverage tolerance. Before publication (2026-11-18 07:23 UTC) the next-day request returns HTTP 200 with reason 999, which the parser maps to no-data. Publication time is being polled every 10 minutes. Still needed: the publication time, rate-limit check (not probed, to avoid using budget). Gaps are re-fetched hourly (S1.5) |
 | S0.3 OTel spike | Done | opentelemetry 0.33.1; gauge pushed to collector; ADR-002 |
-| S0.4 ENTSO-E terms | Partly done | Licence unresolved (pages blocked to fetcher); 400 req/min from snippet, confirm manually |
+| S0.4 ENTSO-E terms | Done (owner confirmed) | Owner confirmed the licence is acceptable, 2026-11-18. Terms not re-read by the exporter's authors. Re-check before any public image. See docs/data-sources.md |
 | S0.5 ADRs | Done | ADR-002 Accepted; 001, 003, 004 Proposed for review |
 | S1.1 Scaffold | Done locally | make all passes; distroless image builds and runs; CI not yet run on GitHub |
 | S1.2 Config | Done | Zones resolve through the registry; unknown zones exit 2 with the known list. Token from file or env |
