@@ -662,3 +662,31 @@ mod multi_series_tests {
         assert!((series.points()[0].eur_per_mwh - 1.0).abs() < f64::EPSILON);
     }
 }
+
+#[cfg(test)]
+mod next_day_fixture_tests {
+    use super::*;
+
+    /// Real SE3 response for the local day after 2026-11-18, fetched at 12:08 UTC, the first poll
+    /// that returned prices. 96 positions, none missing.
+    const SE3_NEXT_DAY: &str = include_str!("../../tests/fixtures/a44-se3-next-day-complete.xml");
+
+    fn utc(y: i16, mo: i8, d: i8, h: i8, mi: i8) -> Timestamp {
+        jiff::civil::date(y, mo, d)
+            .at(h, mi, 0, 0)
+            .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+            .expect("valid")
+            .timestamp()
+    }
+
+    #[test]
+    fn next_day_response_is_complete() {
+        let series = parse_a44("10Y1001A1001A46L", SE3_NEXT_DAY).expect("parses");
+        assert_eq!(series.points().len(), 96);
+        assert_eq!(series.covered_until(), Some(utc(2026, 11, 19, 23, 0)));
+        assert!(
+            series.point_at(utc(2026, 11, 19, 9, 45)).is_some(),
+            "the gap seen on 18 Nov is not here"
+        );
+    }
+}
