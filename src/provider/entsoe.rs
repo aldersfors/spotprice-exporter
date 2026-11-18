@@ -145,7 +145,8 @@ struct A44Collector {
     position: Option<usize>,
     price: Option<f64>,
     resolutions_seen: Vec<Resolution>,
-    points: Vec<PricePoint>,
+    /// One list of points per `TimeSeries` block. Blocks are never merged.
+    series: Vec<Vec<PricePoint>>,
     ack_reason: Option<String>,
     is_acknowledgement: bool,
 }
@@ -154,6 +155,7 @@ impl A44Collector {
     fn start(&mut self, name: &str) {
         match name {
             "Acknowledgement_MarketDocument" => self.is_acknowledgement = true,
+            "TimeSeries" => self.series.push(Vec::new()),
             "Period" => {
                 self.period_start = None;
                 self.period_resolution = None;
@@ -196,10 +198,14 @@ impl A44Collector {
             return Err(ProviderError::Malformed("position is 1-based".to_owned()));
         }
         let steps = i32::try_from(pos - 1).unwrap_or(i32::MAX);
-        self.points.push(PricePoint {
+        let point = PricePoint {
             start: start + res.duration() * steps,
             eur_per_mwh: amount,
-        });
+        };
+        match self.series.last_mut() {
+            Some(current) => current.push(point),
+            None => self.series.push(vec![point]),
+        }
         Ok(())
     }
 
@@ -239,7 +245,7 @@ impl A44Collector {
         Ok(())
     }
 
-    fn finish(mut self, zone: &str) -> Result<PriceSeries, ProviderError> {
+    fn finish(self, zone: &str) -> Result<PriceSeries, ProviderError> {
         if self.is_acknowledgement {
             return match self.ack_reason.as_deref() {
                 Some(REASON_NO_DATA) => Err(ProviderError::NoData),
@@ -251,7 +257,29 @@ impl A44Collector {
                 )),
             };
         }
-        if self.points.is_empty() {
+        // Several TimeSeries can cover the same day (DK1 and DE-LU do, with mRID 1 and 2). Merging
+        // them would fail the strictly-increasing check, and picking by content would be a guess.
+        // Keep the most complete series, first on ties, and say so in the logs.
+        let mut chosen: Option<Vec<PricePoint>> = None;
+        let series_count = self.series.len();
+        for candidate in self.series {
+            if chosen
+                .as_ref()
+                .is_none_or(|best| candidate.len() > best.len())
+            {
+                chosen = Some(candidate);
+            }
+        }
+        let mut points = chosen.unwrap_or_default();
+        if series_count > 1 {
+            tracing::warn!(
+                zone,
+                series = series_count,
+                points = points.len(),
+                "document has several time series; using the most complete"
+            );
+        }
+        if points.is_empty() {
             return Err(ProviderError::NoData);
         }
         let resolution = self
@@ -264,8 +292,8 @@ impl A44Collector {
                 "mixed resolutions in one document".to_owned(),
             ));
         }
-        self.points.sort_by_key(|p| p.start);
-        Ok(PriceSeries::new(zone, resolution, self.points)?)
+        points.sort_by_key(|p| p.start);
+        Ok(PriceSeries::new(zone, resolution, points)?)
     }
 }
 
@@ -526,5 +554,64 @@ mod dst_fixture_tests {
         // All positions are unique and sorted; the parser would have rejected duplicates.
         let starts: Vec<_> = series.points().iter().map(|p| p.start).collect();
         assert!(starts.windows(2).all(|w| w[0] < w[1]));
+    }
+}
+
+#[cfg(test)]
+mod multi_series_tests {
+    use super::*;
+
+    /// Real DK1 response: two series with identical prices (float rounding aside).
+    const DK1_2026_11_18: &str = include_str!("../../tests/fixtures/a44-dk1-2026-11-18.xml");
+    /// Real DE-LU response: two series, 96 and 95 points, with different prices.
+    const DE_LU_2026_11_18: &str = include_str!("../../tests/fixtures/a44-de-lu-2026-11-18.xml");
+
+    fn two_series(first: usize, second: usize) -> String {
+        let block = |count: usize, base: f64| -> String {
+            let points: String = (1..=count)
+                .map(|p| {
+                    format!(
+                        "<Point><position>{p}</position><price.amount>{:.2}</price.amount></Point>",
+                        base + p as f64
+                    )
+                })
+                .collect();
+            format!(
+                "<TimeSeries><Period><timeInterval><start>2026-11-17T23:00Z</start></timeInterval><resolution>PT15M</resolution>{points}</Period></TimeSeries>"
+            )
+        };
+        format!(
+            "<Publication_MarketDocument>{}{}</Publication_MarketDocument>",
+            block(first, 0.0),
+            block(second, 100.0)
+        )
+    }
+
+    #[test]
+    fn dk1_identical_series_collapse_to_one_day() {
+        let series = parse_a44("10YDK-1--------W", DK1_2026_11_18).expect("parses");
+        assert_eq!(series.points().len(), 96);
+        assert!((series.points()[0].eur_per_mwh - 105.53).abs() < 0.01);
+    }
+
+    #[test]
+    fn de_lu_keeps_the_most_complete_series() {
+        let series = parse_a44("10Y1001A1001A82H", DE_LU_2026_11_18).expect("parses");
+        // The first series has 96 points and the second 95. The first is kept.
+        assert_eq!(series.points().len(), 96);
+        assert!((series.points()[0].eur_per_mwh - 116.68).abs() < 0.01);
+    }
+
+    #[test]
+    fn longer_series_wins_even_when_it_comes_second() {
+        let series = parse_a44("10Y1001A1001A46L", &two_series(2, 3)).expect("parses");
+        assert_eq!(series.points().len(), 3);
+        assert!((series.points()[0].eur_per_mwh - 101.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn equal_length_series_keep_the_first() {
+        let series = parse_a44("10Y1001A1001A46L", &two_series(2, 2)).expect("parses");
+        assert!((series.points()[0].eur_per_mwh - 1.0).abs() < f64::EPSILON);
     }
 }
