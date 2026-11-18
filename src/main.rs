@@ -62,7 +62,8 @@ async fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     // Take the meter from this provider directly. A meter from the global provider created before
     // `set_meter_provider` would be a no-op and silently export nothing.
     let meter = meter_provider.meter("spotprice-exporter");
-    let _metrics = metrics::register(&meter, &state);
+    let cheapest_window = jiff::SignedDuration::from_hours(i64::from(config.cheapest_window_hours));
+    let _metrics = metrics::register(&meter, &state, cheapest_window);
     let fetches = metrics::FetchCounter::new(&meter);
 
     let scheduler_task = tokio::spawn(scheduler::run(

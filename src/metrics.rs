@@ -11,7 +11,7 @@ use opentelemetry::{
     metrics::{Counter, Meter, ObservableGauge},
 };
 
-use crate::state::MarketState;
+use crate::{derived, state::MarketState, zones};
 
 /// Attribute: bidding zone code, for example `SE3`.
 pub const ATTR_ZONE: &str = "energy.market.bidding_zone";
@@ -56,7 +56,11 @@ pub struct MarketMetrics {
 }
 
 /// Register all market gauges on `meter`, reading from `state`.
-pub fn register(meter: &Meter, state: &Arc<RwLock<MarketState>>) -> MarketMetrics {
+pub fn register(
+    meter: &Meter,
+    state: &Arc<RwLock<MarketState>>,
+    cheapest_window: SignedDuration,
+) -> MarketMetrics {
     let gauges = vec![
         observe(
             meter,
@@ -102,6 +106,54 @@ pub fn register(meter: &Meter, state: &Arc<RwLock<MarketState>>) -> MarketMetric
                 Some((seconds(horizon), base_attributes(zone)))
             },
         ),
+        observe(
+            meter,
+            state,
+            "energy.market.price.day.min",
+            "EUR/MWh",
+            "Lowest price in the zone's local calendar day, once the cache covers the whole day",
+            |cache, zone, now| {
+                let day = local_day_stats(cache, zone, now)?;
+                Some((day.min, price_attributes(cache, zone)?))
+            },
+        ),
+        observe(
+            meter,
+            state,
+            "energy.market.price.day.max",
+            "EUR/MWh",
+            "Highest price in the zone's local calendar day, once the cache covers the whole day",
+            |cache, zone, now| {
+                let day = local_day_stats(cache, zone, now)?;
+                Some((day.max, price_attributes(cache, zone)?))
+            },
+        ),
+        observe(
+            meter,
+            state,
+            "energy.market.price.day.avg",
+            "EUR/MWh",
+            "Mean price in the zone's local calendar day, once the cache covers the whole day",
+            |cache, zone, now| {
+                let day = local_day_stats(cache, zone, now)?;
+                Some((day.avg, price_attributes(cache, zone)?))
+            },
+        ),
+        observe(
+            meter,
+            state,
+            "energy.market.price.cheapest_window.start",
+            "s",
+            "Start of the cheapest run of intervals of the configured length, from now on",
+            move |cache, zone, now| {
+                let series = cache.series(zone)?;
+                let start = derived::cheapest_window(series, now, cheapest_window)?;
+                let mut attributes = base_attributes(zone);
+                attributes.push(KeyValue::new(ATTR_WINDOW, iso_hours(cheapest_window)));
+                #[allow(clippy::cast_precision_loss)]
+                Some((start.as_second() as f64, attributes))
+            },
+        ),
     ];
     MarketMetrics { _gauges: gauges }
 }
@@ -132,6 +184,19 @@ where
             }
         })
         .build()
+}
+
+/// Attribute: length of a cheapest-window gauge, as an ISO 8601 duration, for example `PT3H`.
+pub const ATTR_WINDOW: &str = "energy.market.window";
+
+fn local_day_stats(cache: &MarketState, zone: &str, now: Timestamp) -> Option<derived::DayStats> {
+    let timezone = jiff::tz::TimeZone::get(zones::lookup(zone)?.timezone).ok()?;
+    let (start, end) = derived::local_day(now, &timezone)?;
+    derived::day_stats(cache.series(zone)?, start, end)
+}
+
+fn iso_hours(length: SignedDuration) -> String {
+    format!("PT{}H", length.as_hours())
 }
 
 fn base_attributes(zone: &str) -> Vec<KeyValue> {

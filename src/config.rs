@@ -35,6 +35,9 @@ pub enum ConfigError {
     /// The token file could not be read.
     #[error("SPOTPRICE_ENTSOE_TOKEN_FILE could not be read: {0}")]
     TokenFile(String),
+    /// The cheapest window must be between 1 and 24 hours.
+    #[error("SPOTPRICE_CHEAPEST_WINDOW_HOURS must be between 1 and 24, got {0}")]
+    CheapestWindow(u32),
     /// The token resolved to an empty string.
     #[error("the ENTSO-E token is empty")]
     TokenEmpty,
@@ -59,6 +62,10 @@ pub struct Config {
     /// ENTSO-E REST base URL. Override only for tests against a mock server.
     #[arg(long, env = "SPOTPRICE_ENTSOE_BASE_URL", default_value = crate::provider::entsoe::DEFAULT_BASE_URL)]
     pub entsoe_base_url: String,
+
+    /// Length of the cheapest-window gauge, in whole hours (1 to 24).
+    #[arg(long, env = "SPOTPRICE_CHEAPEST_WINDOW_HOURS", default_value_t = 3)]
+    pub cheapest_window_hours: u32,
 
     /// Log level filter, used when `RUST_LOG` is not set.
     #[arg(long, env = "SPOTPRICE_LOG_LEVEL", default_value = "info")]
@@ -111,6 +118,9 @@ impl Config {
         }
         if resolved.is_empty() {
             return Err(ConfigError::NoZones);
+        }
+        if !(1..=24).contains(&self.cheapest_window_hours) {
+            return Err(ConfigError::CheapestWindow(self.cheapest_window_hours));
         }
         self.zones = resolved;
         self.resolve_token()?;

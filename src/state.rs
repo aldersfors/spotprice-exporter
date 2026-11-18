@@ -88,6 +88,12 @@ impl MarketState {
             .copied()
     }
 
+    /// The cached series for the zone, if any.
+    #[must_use]
+    pub fn series(&self, zone: &str) -> Option<&crate::model::PriceSeries> {
+        self.zones.get(zone)?.series.as_ref()
+    }
+
     /// Resolution of the cached series for the zone, if any.
     #[must_use]
     pub fn resolution(&self, zone: &str) -> Option<crate::model::Resolution> {
