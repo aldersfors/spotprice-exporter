@@ -1,6 +1,6 @@
 # Example alert rules for spotprice-exporter, as a PrometheusRule (prometheus-operator).
-# Metric names are the Prometheus-style names a backend typically derives from the OTLP names in
-# docs/metric-contract.md. Verify them against your backend before enabling.
+# Metric names match what Mimir stores for the OTLP names in docs/metric-contract.md (checked
+# 2026-11-19). The fetch counter has no _total suffix in Mimir. Re-check other backends before enabling.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -33,7 +33,7 @@ spec:
           # The token is rejected. Retries are hourly, so this persists until the token is fixed.
           expr: |
             sum by (energy_market_bidding_zone) (
-              increase(energy_market_fetch_attempts_total{energy_market_fetch_result="unauthorized"}[1h])
+              increase(energy_market_fetch_attempts{energy_market_fetch_result="unauthorized"}[1h])
             ) > 0
           for: 0m
           labels:
@@ -46,7 +46,7 @@ spec:
           # Sustained transient or rate-limit failures for over an hour.
           expr: |
             sum by (energy_market_bidding_zone) (
-              increase(energy_market_fetch_attempts_total{energy_market_fetch_result=~"transient|rate_limited|malformed"}[1h])
+              increase(energy_market_fetch_attempts{energy_market_fetch_result=~"transient|rate_limited|malformed"}[1h])
             ) > 3
           for: 15m
           labels:

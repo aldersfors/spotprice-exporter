@@ -34,7 +34,7 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | S3.3 kind smoke test | Done, passing | hack/kind-smoke.sh on a private kubeconfig. Found and fixed: token file unreadable (uid 65532), NetworkPolicy blocked the collector (chart now refuses to render without an OTLP destination) |
 | S3.4 Supply chain | Done | deny.toml; cargo-deny passes locally and in CI job |
 | S3.5 Docs | Done | docs/metric-contract.md, getting-started.md, runbook.md, data-sources.md |
-| S3.6 Dashboard and alerts | Done (examples, unverified against a backend) | docs/examples/grafana-dashboard.json (8 panels, valid JSON); docs/examples/prometheus-rules.yaml (4 alerts, parsed; runbook links). Metric names are Prometheus-style guesses until checked |
+| S3.6 Dashboard and alerts | Done, names verified against Mimir 2026-11-19 | docs/examples/grafana-dashboard.json (8 panels, valid JSON); docs/examples/prometheus-rules.yaml (4 alerts, parsed; runbook links). Fetch counter corrected to `energy_market_fetch_attempts` (Mimir has no `_total` suffix). Panels and alerts not yet rendered or evaluated in Grafana (MCP host unreachable) |
 
 ---
 
