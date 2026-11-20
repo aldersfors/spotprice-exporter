@@ -364,7 +364,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (energy_market_bidding_zone, energy_market_fetch_result) (increase(energy_market_fetch_attempts_total{energy_market_bidding_zone=~\"$zone\"}[15m]))",
+          "expr": "sum by (energy_market_bidding_zone, energy_market_fetch_result) (increase(energy_market_fetch_attempts{energy_market_bidding_zone=~\"$zone\"}[15m]))",
           "legendFormat": "{{energy_market_bidding_zone}} {{energy_market_fetch_result}}"
         }
       ]

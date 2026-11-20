@@ -67,9 +67,10 @@ Alert when no data has arrived for two hours:
 Alert on sustained authentication failures:
 
     sum by (energy_market_bidding_zone) (
-      rate(energy_market_fetch_attempts_total{energy_market_fetch_result="unauthorized"}[15m])
+      rate(energy_market_fetch_attempts{energy_market_fetch_result="unauthorized"}[15m])
     ) > 0
 
-Note: the queries above use the Prometheus-style names that a backend typically derives from the OTLP
-names (dots become underscores, counters get `_total`). This naming is not verified against a
-particular backend yet. The OTLP names are the source of truth.
+Note: the queries above use the Prometheus-style names that Mimir stores for the OTLP names (dots
+become underscores). Checked against Mimir on 2026-11-19. Mimir does not add a `_total` suffix to the
+fetch counter, so the series is `energy_market_fetch_attempts`. Other backends may differ, so check
+the names there first. The OTLP names are the source of truth.
