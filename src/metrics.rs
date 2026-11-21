@@ -199,9 +199,12 @@ fn iso_hours(length: SignedDuration) -> String {
     format!("PT{}H", length.as_hours())
 }
 
+/// Attributes shared by every zone metric. The cache is keyed by EIC code, but the zone attribute
+/// carries the registry name (for example `SE3`), as ADR-004 specifies.
 fn base_attributes(zone: &str) -> Vec<KeyValue> {
+    let label = crate::zones::lookup(zone).map_or(zone, |entry| entry.name);
     vec![
-        KeyValue::new(ATTR_ZONE, zone.to_owned()),
+        KeyValue::new(ATTR_ZONE, label.to_owned()),
         KeyValue::new(ATTR_TYPE, "day_ahead"),
         KeyValue::new(ATTR_SOURCE, "entsoe"),
     ]
@@ -217,4 +220,22 @@ fn price_attributes(cache: &MarketState, zone: &str) -> Option<Vec<KeyValue>> {
 #[allow(clippy::cast_precision_loss)]
 fn seconds(delta: SignedDuration) -> f64 {
     delta.as_secs_f64()
+}
+
+#[cfg(test)]
+mod zone_label_tests {
+    use super::*;
+
+    #[test]
+    fn zone_attribute_uses_the_registry_name_for_an_eic_code() {
+        let attributes = base_attributes("10Y1001A1001A46L");
+        assert_eq!(attributes[0].key.as_str(), ATTR_ZONE);
+        assert_eq!(attributes[0].value.to_string(), "SE3");
+    }
+
+    #[test]
+    fn zone_attribute_falls_back_to_the_input_for_unknown_zones() {
+        let attributes = base_attributes("UNKNOWN");
+        assert_eq!(attributes[0].value.to_string(), "UNKNOWN");
+    }
 }

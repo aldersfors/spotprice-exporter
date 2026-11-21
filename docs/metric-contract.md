@@ -32,7 +32,7 @@ Observable gauges. Values are read from the cache when the SDK exports, not when
 
 | Attribute | Values | Used by |
 | --- | --- | --- |
-| `energy.market.bidding_zone` | EIC bidding zone code, for example `10Y1001A1001A46L` (SE3) | all |
+| `energy.market.bidding_zone` | Zone name from the registry, for example `SE3`. The EIC code (`10Y1001A1001A46L`) is not emitted | all |
 | `energy.market.type` | `day_ahead` | all |
 | `energy.market.source` | `entsoe` | all |
 | `energy.market.resolution` | `PT15M`, `PT60M` | `energy.market.price`, `energy.market.price.next`, `energy.market.price.day.*`, `energy.market.price.cheapest_window.start` |
@@ -58,11 +58,11 @@ Conversion to öre/kWh or another currency is not in v1. Divide by 1000 for EUR/
 
 Current price in SE3, with the zone attribute as a label:
 
-    energy_market_price{energy_market_bidding_zone="10Y1001A1001A46L"}
+    energy_market_price{energy_market_bidding_zone="SE3"}
 
 Alert when no data has arrived for two hours:
 
-    energy_market_data_age{energy_market_bidding_zone="10Y1001A1001A46L"} > 7200
+    energy_market_data_age{energy_market_bidding_zone="SE3"} > 7200
 
 Alert on sustained authentication failures:
 
