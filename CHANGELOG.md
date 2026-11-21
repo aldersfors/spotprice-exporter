@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 (2026-11-21)
+
+## What's Changed
+* chore(deps): update rust crate jiff to v1.0.2 by @jalet-renovate-operator[bot] in https://github.com/aldersfors/spotprice-exporter/pull/30
+
+
+**Full Changelog**: https://github.com/aldersfors/spotprice-exporter/compare/v0.2.0...v0.2.1
+
 ## 0.2.0 (2026-11-21)
 
 ## What's Changed
