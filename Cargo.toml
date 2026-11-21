@@ -1,6 +1,6 @@
 [package]
 name = "spotprice-exporter"
-version = "0.1.3"
+version = "0.1.3" # x-release-please-version
 edition = "2024"
 rust-version = "1.85.0"
 authors = ["spotprice-exporter contributors"]
