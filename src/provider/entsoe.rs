@@ -117,15 +117,13 @@ pub fn parse_a44(zone: &str, xml: &str) -> Result<PriceSeries, ProviderError> {
             .map_err(|e| ProviderError::Malformed(format!("XML: {e}")))?;
         match event {
             Event::Start(start) => {
-                collector.start(&String::from_utf8_lossy(start.local_name().as_ref()));
+                collector.start(start.local_name().as_ref());
             }
             Event::End(end) => {
-                collector.end(&String::from_utf8_lossy(end.local_name().as_ref()))?;
+                collector.end(end.local_name().as_ref())?;
             }
             Event::Text(text) => {
-                let value = text
-                    .decode()
-                    .map_err(|e| ProviderError::Malformed(format!("text: {e}")))?;
+                let value = text.xml10_content();
                 collector.text(value.trim())?;
             }
             Event::Eof => break,
