@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.0](https://github.com/aldersfors/spotprice-exporter/compare/v0.1.4...v1.0.0) (2026-11-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **metrics:** energy.market.bidding_zone now carries SE3 instead of 10Y1001A1001A46L, so Prometheus series under energy_market_bidding_zone change label value. Queries and dashboards that match the EIC code need the name.
+
+### Features
+
+* **metrics:** label the zone attribute with the registry name ([#23](https://github.com/aldersfors/spotprice-exporter/issues/23)) ([c8b8522](https://github.com/aldersfors/spotprice-exporter/commit/c8b852233db7aea49d481d9e2b2b155605df9f6c))
+
+
+### Bug Fixes
+
+* **release:** apply the pre-1.0 bump settings to the package ([#25](https://github.com/aldersfors/spotprice-exporter/issues/25)) ([33be798](https://github.com/aldersfors/spotprice-exporter/commit/33be798565045d603e68c5b16cc5d9cc75a9ac65))
+
 ## [0.1.4](https://github.com/aldersfors/spotprice-exporter/compare/v0.1.3...v0.1.4) (2026-11-21)
 
 
