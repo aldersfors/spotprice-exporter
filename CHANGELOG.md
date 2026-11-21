@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/jalet/spotprice-exporter/compare/v0.1.1...v0.1.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **deps:** adapt A44 parser to quick-xml 0.42 ([3478611](https://github.com/jalet/spotprice-exporter/commit/34786112b60d0ff224db7822784153feb6cad463))
+* **deps:** update rust crate quick-xml to 0.42.0 ([2f830c4](https://github.com/jalet/spotprice-exporter/commit/2f830c46fc098de09d8432eb7351b36f3530aed0))
+
 ## [0.1.1](https://github.com/jalet/spotprice-exporter/compare/v0.1.0...v0.1.1) (2026-11-21)
 
 
