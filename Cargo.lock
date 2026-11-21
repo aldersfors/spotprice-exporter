@@ -1601,7 +1601,7 @@ dependencies = [
 
 [[package]]
 name = "spotprice-exporter"
-version = "0.1.4"
+version = "0.1.4" # x-release-please-version
 dependencies = [
  "axum",
  "clap",
