@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.3](https://github.com/jalet/spotprice-exporter/compare/v0.1.2...v0.1.3) (2026-11-21)
+
+
+### Bug Fixes
+
+* **release:** bump the chart and image in the release PR ([f0a1974](https://github.com/jalet/spotprice-exporter/commit/f0a1974fe37c37030ad4e3685ae29e976bdbaf0c))
+* **release:** bump the Helm chart with release-please generic markers ([325ea7f](https://github.com/jalet/spotprice-exporter/commit/325ea7fe2131660102cd21d11a039ef5d2509876))
+* **release:** bump the Helm chart with release-please generic markers ([1f507be](https://github.com/jalet/spotprice-exporter/commit/1f507bef406c5ff0e0ffeda3f95176f9d90f903d))
+
 ## [0.1.2](https://github.com/jalet/spotprice-exporter/compare/v0.1.1...v0.1.2) (2026-11-21)
 
 
