@@ -50,7 +50,7 @@ impl EntsoeProvider {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| ProviderError::Transient(e.without_url().to_string()))?;
+            .map_err(|e| transport_error(e, ""))?;
         Ok(Self {
             client,
             base_url: base_url.to_owned(),
@@ -81,8 +81,7 @@ impl PriceProvider for EntsoeProvider {
             ])
             .send()
             .await
-            // Errors carry the request URL, which includes the token. Strip it.
-            .map_err(|e| ProviderError::Transient(e.without_url().to_string()))?;
+            .map_err(|e| transport_error(e, self.token.expose_secret()))?;
 
         let status = response.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
@@ -94,9 +93,9 @@ impl PriceProvider for EntsoeProvider {
         let body = response
             .text()
             .await
-            .map_err(|e| ProviderError::Transient(e.without_url().to_string()))?;
+            .map_err(|e| transport_error(e, self.token.expose_secret()))?;
         if !status.is_success() && !body.contains("Acknowledgement_MarketDocument") {
-            return Err(ProviderError::Transient(format!("HTTP {status}")));
+            return Err(http_status_error(status, &body, self.token.expose_secret()));
         }
         parse_a44(zone, &body)
     }
@@ -118,15 +117,13 @@ pub fn parse_a44(zone: &str, xml: &str) -> Result<PriceSeries, ProviderError> {
             .map_err(|e| ProviderError::Malformed(format!("XML: {e}")))?;
         match event {
             Event::Start(start) => {
-                collector.start(&String::from_utf8_lossy(start.local_name().as_ref()));
+                collector.start(start.local_name().as_ref());
             }
             Event::End(end) => {
-                collector.end(&String::from_utf8_lossy(end.local_name().as_ref()))?;
+                collector.end(end.local_name().as_ref())?;
             }
             Event::Text(text) => {
-                let value = text
-                    .decode()
-                    .map_err(|e| ProviderError::Malformed(format!("text: {e}")))?;
+                let value = text.xml10_content();
                 collector.text(value.trim())?;
             }
             Event::Eof => break,
@@ -330,6 +327,119 @@ fn parse_timestamp(value: &str) -> Result<Timestamp, ProviderError> {
     format!("{without_zone}:00Z")
         .parse::<Timestamp>()
         .map_err(|e| ProviderError::Malformed(format!("timestamp {value}: {e}")))
+}
+
+/// Longest response excerpt kept in an error message, in characters.
+const EXCERPT_CHARS: usize = 200;
+
+/// Describe a transport failure: the kind (timeout, connect, ...) and the cause chain.
+///
+/// The request URL carries the token, so the message never includes it. Any occurrence of the
+/// token that still reaches the message is replaced as a second guard.
+fn transport_error(error: reqwest::Error, token: &str) -> ProviderError {
+    let kind = if error.is_timeout() {
+        "timeout"
+    } else if error.is_connect() {
+        "connect"
+    } else if error.is_body() {
+        "body"
+    } else if error.is_decode() {
+        "decode"
+    } else if error.is_request() {
+        "request"
+    } else {
+        "other"
+    };
+    let error = error.without_url();
+    let mut message = format!("{kind}: {error}");
+    let mut cause = std::error::Error::source(&error);
+    while let Some(inner) = cause {
+        message.push_str(" <- ");
+        message.push_str(&inner.to_string());
+        cause = inner.source();
+    }
+    ProviderError::Transient(redact(&message, token))
+}
+
+/// A non-success response, with the start of its body for diagnosis. The body is never logged
+/// whole: it is whitespace-collapsed, cut to [`EXCERPT_CHARS`] characters and stripped of the token.
+fn http_status_error(status: reqwest::StatusCode, body: &str, token: &str) -> ProviderError {
+    let excerpt: String = redact(body, token)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(EXCERPT_CHARS)
+        .collect();
+    if excerpt.is_empty() {
+        ProviderError::Transient(format!("HTTP {status}"))
+    } else {
+        ProviderError::Transient(format!("HTTP {status}: {excerpt}"))
+    }
+}
+
+/// Replace every occurrence of `token` in `text`. An empty token changes nothing.
+fn redact(text: &str, token: &str) -> String {
+    if token.is_empty() {
+        text.to_owned()
+    } else {
+        text.replace(token, "[redacted]")
+    }
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+
+    fn message(error: ProviderError) -> String {
+        match error {
+            ProviderError::Transient(text) => text,
+            other => panic!("expected Transient, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_body_keeps_status_only() {
+        let text = message(http_status_error(
+            reqwest::StatusCode::from_u16(599).expect("valid"),
+            "   \n ",
+            "tok",
+        ));
+        assert_eq!(text, "HTTP 599 <unknown status code>");
+    }
+
+    #[test]
+    fn body_excerpt_is_collapsed_and_redacted() {
+        let body =
+            "<html>\n  <body>denied for securityToken=tok-123   please retry</body>\n</html>";
+        let text = message(http_status_error(
+            reqwest::StatusCode::BAD_GATEWAY,
+            body,
+            "tok-123",
+        ));
+        assert_eq!(
+            text,
+            "HTTP 502 Bad Gateway: <html> <body>denied for securityToken=[redacted] please retry</body> </html>"
+        );
+        assert!(!text.contains("tok-123"));
+    }
+
+    #[test]
+    fn long_body_is_cut_to_the_excerpt_length_on_character_boundaries() {
+        let body = "é".repeat(500);
+        let text = message(http_status_error(
+            reqwest::StatusCode::BAD_GATEWAY,
+            &body,
+            "tok",
+        ));
+        let excerpt = text.trim_start_matches("HTTP 502 Bad Gateway: ");
+        assert_eq!(excerpt.chars().count(), EXCERPT_CHARS);
+    }
+
+    #[test]
+    fn redact_leaves_text_alone_without_a_token() {
+        assert_eq!(redact("nothing to hide", ""), "nothing to hide");
+    }
 }
 
 #[cfg(test)]

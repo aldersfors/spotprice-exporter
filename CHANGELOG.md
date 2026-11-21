@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.1](https://github.com/jalet/spotprice-exporter/compare/v0.1.0...v0.1.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **chart:** make the Cilium collector port configurable ([1d0644c](https://github.com/jalet/spotprice-exporter/commit/1d0644c8fa6a3be82bea429a3a78502660555684))
+* **provider:** log transport kind and response excerpt ([cf2cf1c](https://github.com/jalet/spotprice-exporter/commit/cf2cf1c75c607bd64175286456863ed22319bee8))
+* **provider:** log transport kind and response excerpt ([9490ae9](https://github.com/jalet/spotprice-exporter/commit/9490ae9bd66ed55c30b65cdcf74ad10e4f1cd3c8))
+
 ## 0.1.0 (2026-11-18)
 
 
