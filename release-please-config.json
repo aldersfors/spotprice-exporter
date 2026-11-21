@@ -19,19 +19,12 @@
           "path": "Cargo.lock"
         },
         {
-          "type": "yaml",
-          "path": "charts/spotprice-exporter/Chart.yaml",
-          "jsonpath": "$.version"
+          "type": "generic",
+          "path": "charts/spotprice-exporter/Chart.yaml"
         },
         {
-          "type": "yaml",
-          "path": "charts/spotprice-exporter/Chart.yaml",
-          "jsonpath": "$.appVersion"
-        },
-        {
-          "type": "yaml",
-          "path": "charts/spotprice-exporter/values.yaml",
-          "jsonpath": "$.image.tag"
+          "type": "generic",
+          "path": "charts/spotprice-exporter/values.yaml"
         }
       ]
     }
