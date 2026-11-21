@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/aldersfors/spotprice-exporter/compare/v0.1.3...v0.1.4) (2026-11-21)
+
+
+### Bug Fixes
+
+* **release:** bump the chart with generic release-please markers ([#21](https://github.com/aldersfors/spotprice-exporter/issues/21)) ([ce07487](https://github.com/aldersfors/spotprice-exporter/commit/ce0748723080a1351195f9feb93d73b94f5b22a3))
+* **release:** use the matlistan release-please setup ([#19](https://github.com/aldersfors/spotprice-exporter/issues/19)) ([6a8d47b](https://github.com/aldersfors/spotprice-exporter/commit/6a8d47bff32a733f2a8de17ea3ad6a66ecf06a21))
+
 ## [0.1.3](https://github.com/jalet/spotprice-exporter/compare/v0.1.2...v0.1.3) (2026-11-21)
 
 
