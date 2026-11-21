@@ -8,7 +8,7 @@ Priorities: **P0** blocks the release, **P1** should ship, **P2** nice to have.
 
 Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-splendid-axolotl.md`.
 
-## Status (2026-11-17)
+## Status (2026-11-21)
 
 | Story | Status | Notes |
 | --- | --- | --- |
@@ -17,10 +17,10 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | S0.3 OTel spike | Done | opentelemetry 0.33.1; gauge pushed to collector; ADR-002 |
 | S0.4 ENTSO-E terms | Done (owner confirmed) | Owner confirmed the licence is acceptable, 2026-11-18. Terms not re-read by the exporter's authors. Re-check before any public image. See docs/data-sources.md |
 | S0.5 ADRs | Done | ADR-002 Accepted; 001, 003, 004 Proposed for review |
-| S1.1 Scaffold | Done locally | make all passes; distroless image builds and runs; CI not yet run on GitHub |
+| S1.1 Scaffold | Done | make all passes; distroless image builds and runs; CI runs on GitHub and is green on main |
 | S1.2 Config | Done | Zones resolve through the registry; unknown zones exit 2 with the known list. Token from file or env |
 | S1.3 Zone registry | Done | 13 zones (SE1-4, NO1-5, DK1-2, FI, DE-LU). Every EIC code checked against the live API. Timezones recorded for S2.2. DE-LU resolved: the API returns Sequence 1 (SDAC, tagged position 1) and Sequence 2 (EXAA 10:15 auction). The parser uses Sequence 1. Confirmed against the ENTSO-E table for 18/11/2026, which is shown in UTC |
-| S1.4 ENTSO-E provider | Done against synthetic fixtures | Parser and HTTP error mapping (401, 429, 5xx, 999 no-data, token redaction). DST days: 92 and 100 intervals tested. Needs S0.2 real fixtures |
+| S1.4 ENTSO-E provider | Done | Parser and HTTP error mapping (401, 429, 5xx, 999 no-data, token redaction). DST days: 92 and 100 intervals tested on the S0.2 real fixtures. The repo has no wiremock dependency, so the network path has no mock-server test; the status and error formatting are unit-tested |
 | S1.5 Scheduler | Done | Pure policy tested. Hourly full refresh per zone, so gaps the source fills later reach the cache (max 24 requests per zone per day, plus fetches while coverage is short). Publish window 11:00 UTC; <=1 request per zone per 15 min |
 | S1.6 Gauges over OTLP | Done, E2E verified | price, .next, data.age, data.horizon arrive at a collector with zone/type/source/resolution attributes; values match mock. Found and fixed: meter taken from global provider before it was set (no-op) |
 | S2.1 Staleness and horizon | Done | data.age and data.horizon exported |
@@ -29,8 +29,12 @@ Planning source: the approved plan, `~/.claude/plans/do-we-track-electicity-sple
 | S2.4 Logs and self-telemetry | Done | JSON logs; `energy.market.fetch.attempts` counter by zone and outcome |
 | S2.5 Graceful shutdown with flush | Done, verified | SIGTERM: HTTP stops, scheduler aborts, last metrics flushed to collector | SIGTERM/ctrl-c stops HTTP, aborts scheduler, flushes meter provider |
 | S3.1 Helm chart | Done, rendered and linted | charts/spotprice-exporter. Single replica, Recreate, no Service, token via file from secret. Found in smoke test: token file was unreadable (fixed with runAsUser/fsGroup 65532, mode 0440) |
-| S3.2 Release pipeline | Done, one check pending | v0.1.0 released 2026-11-18. Release Please, the multi-arch image (tags 0.1.0, 0.1, latest, signed) and the Helm chart (pulled and checked) all succeeded. Pending: the yaml jsonpath bumps in extra-files are not exercised until a release changes the version. The image package is public, and an anonymous pull of 0.1.0 succeeds, so the cluster needs no pull secret |
-| S5.5 / S5.6 homelab wiring | Partly decided | OTLP destination: Mimir at http://mimir.monitoring.svc.cluster.local:8080/otlp (the scm-metrics-exporter path; Mimir multitenancy is off). Token: the per-app stack needs owner-run Pulumi with AWS/KMS access, so it is not drafted. Interim option: a manually created secret, referenced by entsoe.existingSecret |
+| S3.2 Release pipeline | Partly done, jsonpath check FAILED | Releases 0.1.0, 0.1.1 and 0.1.2 published. Image and Helm chart push work; the image package is public. Check on 2026-11-21: the release PRs bump Cargo.toml and the manifest but not the chart. `charts/spotprice-exporter/Chart.yaml` and `values.yaml` (image tag) stayed at 0.1.0 through 0.1.2, so the yaml jsonpath extra-files do not work. Fix needed in release-please-config.json (for example generic `x-release-please-version` markers), verified on the next release. The image and chart pinned by the homelab were set by hand or by Renovate, not by this pipeline |
+| CI and image build | Done, 2026-11-21 | PR #8: amd64 and arm64 built on native runners (ubuntu-24.04 and ubuntu-24.04-arm), pushed by digest, combined into one manifest list and signed. The v0.1.2 release run succeeded and tags 0.1.2, 0.1 and latest exist. PR #9, a manual rebuild path, was closed unmerged |
+| S5.6 OTLP destination | Done, 2026-11-21 | Mimir at http://mimir.monitoring.svc.cluster.local:8080/otlp (multitenancy off). Homelab PR #1448 pins chart and image 0.1.2, which makes the Cilium policy allow port 8080. ArgoCD synced and healthy, 0.1.2 pod fetched 96 points for SE3 |
+| S5.5 Token via OpenBao and ESO | Open | The token is still a manually created secret, referenced by entsoe.existingSecret. The OpenBao policy, ExternalSecret and Pulumi work lives in k8s-home-lab and needs the owner, who has the AWS/KMS access |
+| S5.1 / S5.2 Renovate | Active on this repo | Renovate opens PRs here (#3, #11, #12 on 2026-11-21). Homelab discovery not rechecked |
+| S5.4 GitOps wrapper | Done | charts/apps/spotprice-exporter on k8s-home-lab main; ArgoCD app Synced and Healthy |
 | S3.3 kind smoke test | Done, passing | hack/kind-smoke.sh on a private kubeconfig. Found and fixed: token file unreadable (uid 65532), NetworkPolicy blocked the collector (chart now refuses to render without an OTLP destination) |
 | S3.4 Supply chain | Done | deny.toml; cargo-deny passes locally and in CI job |
 | S3.5 Docs | Done | docs/metric-contract.md, getting-started.md, runbook.md, data-sources.md |
@@ -280,3 +284,7 @@ Lives in `~/projects/jarsater/k8s-home-lab`. Two parts: Renovate scans the new r
 - Gauges for current and next price, versus a per-interval series
 - Whether to ship a Collector config example
 - Whether the repo is public (affects ENTSO-E terms, S0.4)
+- Zone label on the metrics: keep the EIC code (`10Y1001A1001A46L`) or add a readable zone name such as `SE3`? Changes the metric contract (ADR-004)
+- Heat pump scheduling needs prices beyond the next quarter (a tomorrow curve or a per-quarter series), and the controller's location is undecided. Not yet a story
+- S3.2: fix the release-please chart bump (see the Status table) and confirm it on the next release
+- Renovate PRs #11 (runner image to 26.04) and #12 (major artifact actions) are open and need review before merge; #12 changes the digest artifact handoff in the release workflow
