@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 (2026-11-21)
+
+## What's Changed
+* feat(metrics)!: label the zone attribute with the registry name by @jalet in https://github.com/aldersfors/spotprice-exporter/pull/23
+* fix(release): apply the pre-1.0 bump settings to the package by @jalet in https://github.com/aldersfors/spotprice-exporter/pull/25
+* fix(release): let the action read release-please-config.json by @jalet in https://github.com/aldersfors/spotprice-exporter/pull/26
+* fix(release): restore the release-please marker in Cargo.lock by @jalet in https://github.com/aldersfors/spotprice-exporter/pull/28
+* chore(deps): update actions/create-github-app-token action to v3.4.0 by @jalet-renovate-operator[bot] in https://github.com/aldersfors/spotprice-exporter/pull/29
+
+
+**Full Changelog**: https://github.com/aldersfors/spotprice-exporter/compare/v0.1.4...v0.2.0
+
 ## [0.1.4](https://github.com/aldersfors/spotprice-exporter/compare/v0.1.3...v0.1.4) (2026-11-21)
 
 
