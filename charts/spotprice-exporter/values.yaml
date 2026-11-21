@@ -1,6 +1,6 @@
 # Image is pinned here and bumped by Renovate (helm-values manager).
 image:
-  repository: ghcr.io/jalet/spotprice-exporter
+  repository: ghcr.io/aldersfors/spotprice-exporter
   tag: "0.1.2" # x-release-please-version
   pullPolicy: IfNotPresent
 
